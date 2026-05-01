@@ -149,22 +149,28 @@ export default function Checkout() {
           
           if (err.response?.data) {
             const data = err.response.data;
-            // Jika data memiliki format JSON Midtrans {"code":"500", ...}
-            if (data.details && typeof data.details === 'object') {
-              errMsg = data.message || data.details.status_message || JSON.stringify(data.details);
-            } else if (data.message) {
-              errMsg = data.message;
-            } else if (data.error) {
-              errMsg = data.error;
+            // Robust parsing of nested error messages
+            const extractMsg = (obj: any): string => {
+              if (typeof obj === 'string') return obj;
+              if (obj?.status_message) return obj.status_message;
+              if (obj?.message) return typeof obj.message === 'string' ? obj.message : JSON.stringify(obj.message);
+              if (obj?.error_messages?.[0]) return obj.error_messages[0];
+              if (obj?.error) return typeof obj.error === 'string' ? obj.error : JSON.stringify(obj.error);
+              return JSON.stringify(obj);
+            };
+
+            if (data.details) {
+              errMsg = extractMsg(data.details);
             } else {
-              errMsg = JSON.stringify(data);
+              errMsg = extractMsg(data);
             }
           } else if (err.message) {
             errMsg = err.message;
           }
           
-          toast.error(`Midtrans: ${errMsg}`, {
-            description: "Pastikan Server Key di Admin > Settings sudah benar sesuai lingkungannya (Sandbox/Production)."
+          toast.error(`Midtrans Error: ${errMsg}`, {
+            description: "Pastikan Server Key di Admin > Settings sudah benar. Jika tetap error, cek console log server untuk detail teknis.",
+            duration: 10000
           });
         }
         return;
