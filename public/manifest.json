@@ -1,0 +1,16 @@
+{
+  "name": "Pasar Digital Marketplace",
+  "short_name": "PasarDigital",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#8b5cf6",
+  "icons": [
+    {
+      "src": "https://ais-dev-g3uimtfriix5hyrslbn5kx-403376615733.asia-southeast1.run.app/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ],
+  "description": "Premium Digital Products Marketplace Indonesia"
+}

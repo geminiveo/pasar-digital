@@ -1,0 +1,15 @@
+{
+  "name": "PASAR DIGITAL",
+  "description": "Marketplace produk digital multivendor dengan sistem pengiriman otomatis, manajemen lisensi, dan integrasi pambayaran Pakasir.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "Multivendor",
+    "Digital Delivery",
+    "E-commerce",
+    "Analytics"
+  ]
+}

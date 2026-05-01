@@ -1,0 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-brand-primary: #6366f1; /* Indigo 500 */
+  --color-brand-secondary: #818cf8; /* Indigo 400 */
+  --color-brand-accent: #22d3ee; /* Cyan 400 */
+  --color-surface-950: #030305;
+  --color-surface-900: #08080a;
+  --color-surface-800: #0c0c0e;
+  --color-surface-700: #1a1a1e;
+}
+
+@layer base {
+  body {
+    @apply bg-surface-950 text-zinc-100 font-sans selection:bg-brand-primary/30;
+    background-image: radial-gradient(circle at 50% -20%, #6366f115, transparent 50%);
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-6 py-2.5 bg-brand-primary hover:bg-brand-secondary text-white rounded-xl font-bold transition-all active:scale-95 shadow-xl shadow-brand-primary/20 border border-white/10;
+  }
+  
+  .glass-card {
+    @apply bg-surface-900/60 border border-white/10 backdrop-blur-2xl rounded-3xl p-6 shadow-2xl;
+  }
+
+  .input-field {
+    @apply w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 focus:outline-none focus:border-brand-primary/50 transition-all text-white placeholder:text-zinc-500 font-medium;
+  }
+
+  .sidebar-link-active {
+    @apply bg-white/5 border border-white/10 text-brand-secondary shadow-lg shadow-brand-primary/5;
+  }
+}
