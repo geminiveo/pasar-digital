@@ -7,6 +7,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import BottomNav from './components/BottomNav';
 import Home from './pages/Home';
 import AuthPage from './pages/Auth';
 import Dashboard from './pages/Dashboard';
@@ -21,7 +22,7 @@ export default function App() {
     <Router>
       <div className="min-h-screen flex flex-col">
         <Navbar />
-        <main className="flex-grow">
+        <main className="flex-grow pb-24 md:pb-0">
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/shop" element={<Shop />} />
@@ -34,6 +35,7 @@ export default function App() {
           </Routes>
         </main>
         <Footer />
+        <BottomNav />
         <Toaster position="bottom-right" theme="dark" richColors />
       </div>
     </Router>
