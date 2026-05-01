@@ -233,11 +233,10 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
 
     // 5. Setup Payload Minimalis
     const totalAmount = Math.max(1000, Math.floor(Number(amount))); 
-    const uniqueId = `ORD-${Date.now()}`;
     
     const parameter: any = {
       transaction_details: {
-        order_id: uniqueId,
+        order_id: order_id || `ORD-${Date.now()}`,
         gross_amount: totalAmount
       },
       credit_card: { secure: true },
@@ -271,11 +270,6 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
     
     res.status(error.response?.status || 500).json({
       error: "Midtrans API Failure",
-      diagnostics: {
-        status: error.response?.status,
-        mode: isSandboxMode ? "SANDBOX" : "PRODUCTION",
-        is_sandbox_key: serverKey?.startsWith('SB-')
-      },
       message: midtransError?.error_messages?.[0] || midtransError?.status_message || error.message
     });
   }
