@@ -194,14 +194,27 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       .eq('id', 'midtrans_config')
       .single();
 
-    if (settingsError || !settings?.config?.server_key) {
-      return res.status(500).json({ error: "Server Key tidak ditemukan. Pastikan sudah diisi di Admin > Settings." });
+    if (settingsError) {
+      console.error("Supabase Error fetching midtrans_config:", settingsError);
+      return res.status(500).json({ 
+        error: "Gagal mengambil konfigurasi Midtrans dari Database", 
+        message: settingsError.message,
+        hint: "Pastikan tabel system_settings sudah ada dan SUPABASE_SERVICE_ROLE_KEY di Vercel sudah benar."
+      });
+    }
+
+    if (!settings?.config?.server_key) {
+      return res.status(500).json({ error: "Server Key Midtrans kosong di Database. Silakan isi di Admin > Settings." });
     }
 
     // 1. Pembersihan Kunci secara Agresif
-    let serverKey = settings.config.server_key.trim();
-    // Bersihkan karakter aneh yang sering ikut saat copy-paste (quotes, hidden chars)
-    serverKey = serverKey.replace(/['"]+/g, '').replace(/\s/g, '');
+    let serverKey = String(settings.config.server_key).trim();
+    // Bersihkan karakter aneh yang sering ikut saat copy-paste (quotes, hidden chars, tabs)
+    serverKey = serverKey.replace(/['"]+/g, '').replace(/[\r\n\t]/g, '').replace(/\s/g, '');
+    
+    if (serverKey.length < 10) {
+      return res.status(400).json({ error: "Server Key terlalu pendek atau tidak valid." });
+    }
     
     const isSandboxMode = !!settings.config.is_sandbox;
 
@@ -283,21 +296,24 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
     res.json(response.data);
   } catch (error: any) {
     const midtransError = error.response?.data;
-    console.error("Midtrans Error Catch:", JSON.stringify(midtransError || error.message));
-    
-    // Deteksi khusus jika Midtrans memberikan Error 500
-    if (error.response?.status === 500) {
-      return res.status(500).json({
-        error: "Midtrans Server Error (500)",
-        message: "Midtrans menolak transaksi ini. Periksa IP Whitelist di Dashboard Midtrans atau pastikan Server Key benar.",
-        details: midtransError
-      });
-    }
-
-    res.status(error.response?.status || 500).json({
-      error: "Gagal menghubungkan ke Midtrans",
+    const errorDetails = {
+      code: midtransError?.code || error.response?.status,
       message: midtransError?.message || midtransError?.status_message || error.message,
-      details: midtransError
+      midtrans_response: midtransError,
+      request_payload: { order_id: uniqueId, amount: totalAmount },
+      vercel_check: {
+        has_supabase_url: !!process.env.VITE_SUPABASE_URL,
+        has_service_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+        node_env: process.env.NODE_ENV
+      }
+    };
+
+    console.error("DEBUG MIDTRANS FAILURE:", JSON.stringify(errorDetails));
+    
+    res.status(error.response?.status || 500).json({
+      error: "Midtrans API Failure",
+      message: errorDetails.message,
+      details: errorDetails
     });
   }
 });
