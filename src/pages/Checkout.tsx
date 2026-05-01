@@ -145,8 +145,18 @@ export default function Checkout() {
           }
         } catch (err: any) {
           console.error("Midtrans Payment Details:", err);
-          const rawError = err.response?.data?.error || err.message;
-          const errMsg = typeof rawError === 'object' ? JSON.stringify(rawError) : (rawError || "Gagal menghubungi gateway pembayaran.");
+          let errMsg = "Gagal menghubungi gateway pembayaran.";
+          
+          if (err.response?.data) {
+            const data = err.response.data;
+            if (typeof data === 'string') errMsg = data;
+            else if (data.error) errMsg = typeof data.error === 'object' ? JSON.stringify(data.error) : data.error;
+            else if (data.message) errMsg = data.message;
+            else errMsg = JSON.stringify(data);
+          } else if (err.message) {
+            errMsg = err.message;
+          }
+          
           toast.error(`Midtrans: ${errMsg}`);
         }
         return;
