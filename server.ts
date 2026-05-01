@@ -172,21 +172,27 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       .single();
 
     if (!settings?.config?.server_key || !settings?.config?.client_key) {
-      return res.status(500).json({ error: "Midtrans configuration missing in database" });
+      return res.status(500).json({ error: "Midtrans configuration (Server/Client Key) is missing in the database admin settings." });
+    }
+
+    if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("Missing Supabase Environment Variables in Vercel/Production");
+      return res.status(500).json({ error: "Server error: Missing environment variables on host." });
     }
 
     // Initialize Midtrans Snap
     let snap;
     try {
+      // In ESM, require can be used via createRequire for CJS packages like midtrans-client
       const midtransClient = require('midtrans-client');
       snap = new midtransClient.Snap({
         isProduction: !settings.config.is_sandbox,
         serverKey: settings.config.server_key,
         clientKey: settings.config.client_key
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to initialize midtrans-client:", err);
-      return res.status(500).json({ error: "Gagal inisialisasi library Midtrans" });
+      return res.status(500).json({ error: "Gagal inisialisasi library Midtrans: " + err.message });
     }
 
     const parameter = {
