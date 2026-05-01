@@ -183,7 +183,10 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
     if (!supabaseUrl || !supabaseKey) {
-      return res.status(500).json({ error: "Missing Supabase credentials in environment." });
+      return res.status(500).json({ 
+        error: "Kredensial Supabase Hilang di Vercel", 
+        message: "Silakan tambahkan SUPABASE_SERVICE_ROLE_KEY di Environment Variables Vercel." 
+      });
     }
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
@@ -195,38 +198,36 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       .single();
 
     if (settingsError) {
-      console.error("Supabase Error fetching midtrans_config:", settingsError);
-      return res.status(500).json({ 
-        error: "Gagal mengambil konfigurasi Midtrans dari Database", 
-        message: settingsError.message,
-        hint: "Pastikan tabel system_settings sudah ada dan SUPABASE_SERVICE_ROLE_KEY di Vercel sudah benar."
-      });
-    }
-
-    if (!settings?.config?.server_key) {
-      return res.status(500).json({ error: "Server Key Midtrans kosong di Database. Silakan isi di Admin > Settings." });
+      return res.status(500).json({ error: "Gagal membaca database", message: settingsError.message });
     }
 
     // 1. Pembersihan Kunci secara Agresif
-    let serverKey = String(settings.config.server_key).trim();
-    // Bersihkan karakter aneh yang sering ikut saat copy-paste (quotes, hidden chars, tabs)
+    let serverKey = String(settings?.config?.server_key || '').trim();
     serverKey = serverKey.replace(/['"]+/g, '').replace(/[\r\n\t]/g, '').replace(/\s/g, '');
     
-    if (serverKey.length < 10) {
-      return res.status(400).json({ error: "Server Key terlalu pendek atau tidak valid." });
+    if (serverKey.includes(':')) serverKey = serverKey.split(':')[0];
+    
+    if (!serverKey || serverKey.length < 10) {
+      return res.status(400).json({ error: "Server Key Midtrans Belum Diisi di Dashboard Admin" });
     }
     
-    const isSandboxMode = !!settings.config.is_sandbox;
-
-    console.log(`[Midtrans Debug] Env: ${isSandboxMode ? 'SANDBOX' : 'PRODUCTION'}`);
-    console.log(`[Midtrans Debug] Server Key (Prefix): ${serverKey.substring(0, 5)}...`);
+    // PERBAIKAN: Pastikan is_sandbox terdeteksi dengan benar (String vs Boolean)
+    const rawSandbox = settings.config.is_sandbox;
+    const isSandboxMode = rawSandbox === true || rawSandbox === 'true' || rawSandbox === 1;
 
     // 2. Deteksi Key Mismatch
-    if (isSandboxMode && !serverKey.startsWith('SB-')) {
-      return res.status(400).json({ error: "MISMATCH: Anda memakai 'Mode Sandbox' tapi Key 'Production' (Key Sandbox harus diawali SB-)." });
+    const isSandboxKey = serverKey.startsWith('SB-');
+    if (isSandboxMode && !isSandboxKey) {
+      return res.status(400).json({ 
+        error: "Konfigurasi Error",
+        message: "Anda menggunakan Mode Sandbox tapi memasukkan Key Production (Key Sandbox harus diawali 'SB-')."
+      });
     }
-    if (!isSandboxMode && serverKey.startsWith('SB-')) {
-      return res.status(400).json({ error: "MISMATCH: Anda memakai 'Mode Production' tapi Key 'Sandbox' (Key Production tidak diawali SB-)." });
+    if (!isSandboxMode && isSandboxKey) {
+      return res.status(400).json({ 
+        error: "Konfigurasi Error",
+        message: "Anda menggunakan Mode Production tapi memasukkan Key Sandbox (Key Sandbox diawali 'SB-')."
+      });
     }
 
     // 3. Setup Auth & URL
@@ -235,53 +236,26 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       ? 'https://app.sandbox.midtrans.com/snap/v1/transactions' 
       : 'https://app.midtrans.com/snap/v1/transactions';
 
-    // 4. Setup Payload (Sangat ketat: total item HARUS sama dengan gross_amount)
-    const totalAmount = Math.max(100, Math.floor(Number(amount)));
-    // Gunakan prefix INV untuk menghindari bentrok dengan testing sebelumnya
-    const uniqueId = `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    // 4. Setup Payload PALING AMAN (Tanpa item_details dulu untuk tes koneksi murni)
+    const totalAmount = Math.max(1000, Math.floor(Number(amount))); // Minimal 1000 untuk keamanan
+    const uniqueId = `PDEL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     
-    // Pastikan item_details bersih dan harga satuan dikali quantity sama dengan gross_amount
-    const validatedItems = (item_details || []).map((it: any) => ({
-      id: String(it.id || 'item').substring(0, 50),
-      price: Math.floor(Number(it.price)),
-      quantity: Math.max(1, Math.floor(Number(it.quantity || 1))),
-      name: String(it.name || 'Produk').replace(/[^\x20-\x7E]/g, '').substring(0, 50)
-    }));
-
-    // Hitung ulang total dari items
-    const itemsTotal = validatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-
     const parameter: any = {
       transaction_details: {
         order_id: uniqueId,
-        gross_amount: itemsTotal > 0 ? itemsTotal : totalAmount
+        gross_amount: totalAmount
       },
-      credit_card: {
-        secure: true
-      }
+      credit_card: { secure: true }
     };
 
-    // Sertakan item_details HANYA jika jumlah harganya pas dengan gross_amount
-    if (itemsTotal > 0 && itemsTotal === totalAmount) {
-      parameter.item_details = validatedItems;
-    } else {
-      // Jika tidak pas, gunakan 1 item dummy sebagai representasi total agar tidak error 500
-      parameter.item_details = [{
-        id: 'total',
-        price: totalAmount,
-        quantity: 1,
-        name: 'Total Pembelian'
-      }];
-    }
-
-    if (customer_details?.email && customer_details.email.includes('@')) {
+    if (customer_details?.email && String(customer_details.email).includes('@')) {
       parameter.customer_details = {
-        first_name: String(customer_details.first_name || 'Buyer').replace(/[^\x20-\x7E]/g, '').substring(0, 20),
+        first_name: String(customer_details.first_name || 'Customer').replace(/[^\x20-\x7E]/g, '').substring(0, 20),
         email: String(customer_details.email)
       };
     }
 
-    console.log("Midtrans Payload Final:", JSON.stringify(parameter));
+    console.log(`[DEBUG] Mengirim ke ${isSandboxMode ? 'SANDBOX' : 'PRODUCTION'} dengan Order ID: ${uniqueId}`);
     
     const response = await axios.post(midtransUrl, parameter, {
       headers: {
@@ -292,28 +266,23 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       timeout: 15000 
     });
 
-    console.log("Midtrans Response Success:", uniqueId);
     res.json(response.data);
   } catch (error: any) {
     const midtransError = error.response?.data;
-    const errorDetails = {
-      code: midtransError?.code || error.response?.status,
-      message: midtransError?.message || midtransError?.status_message || error.message,
-      midtrans_response: midtransError,
-      request_payload: { order_id: uniqueId, amount: totalAmount },
-      vercel_check: {
-        has_supabase_url: !!process.env.VITE_SUPABASE_URL,
-        has_service_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-        node_env: process.env.NODE_ENV
-      }
-    };
-
-    console.error("DEBUG MIDTRANS FAILURE:", JSON.stringify(errorDetails));
+    console.error("MIDTRANS_API_ERROR:", JSON.stringify(midtransError || error.message));
     
     res.status(error.response?.status || 500).json({
-      error: "Midtrans API Failure",
-      message: errorDetails.message,
-      details: errorDetails
+      error: "Midtrans Refused Connection",
+      message: midtransError?.message || midtransError?.status_message || error.message,
+      troubleshoot: {
+        hint: "Pesan 500 dari Midtrans biasanya berarti Server Key salah atau IP terblokir.",
+        steps: [
+          "1. BUKA Dashboard Midtrans > Settings > Configuration.",
+          "2. PASTIKAN 'Payment API IP Whitelist' KOSONG.",
+          "3. PASTIKAN Server Key sudah pas (Sandbox vs Production).",
+        ]
+      },
+      details: midtransError
     });
   }
 });
@@ -321,6 +290,8 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
 // Conditional Vite middleware or static serving
 async function configureApp() {
   if (process.env.NODE_ENV !== "production") {
+    // Import vite dynamically to avoid production errors
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -330,7 +301,6 @@ async function configureApp() {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
-      // In Vercel, static serving is handled by the platform, but this is a fallback
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
