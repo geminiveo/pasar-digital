@@ -101,8 +101,8 @@ export default function Shop() {
 
       {/* Products Grid */}
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-            {[1,2,3,4,5,6,7,8].map(i => <div key={i} className="aspect-[4/5] rounded-3xl bg-surface-800 animate-pulse border border-zinc-800"></div>)}
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8">
+            {[1,2,3,4,5,6,7,8].map(i => <div key={i} className="aspect-[4/5] rounded-2xl md:rounded-3xl bg-surface-800 animate-pulse border border-zinc-800"></div>)}
         </div>
       ) : filteredProducts.length === 0 ? (
         <div className="text-center py-20">
@@ -113,36 +113,36 @@ export default function Shop() {
           <p className="text-zinc-500 max-w-sm mx-auto">Coba gunakan kata kunci lain atau buka filter kategori lainnya.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-8">
           {filteredProducts.map((p) => (
             <motion.div 
               key={p.id}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               whileHover={{ y: -5 }}
-              className="glass-card p-4 group bg-surface-800/20"
+              className="glass-card p-3 md:p-4 group bg-surface-800/20"
             >
-               <div className="relative aspect-[4/3] rounded-2xl overflow-hidden mb-5">
+               <div className="relative aspect-[4/3] rounded-xl md:rounded-2xl overflow-hidden mb-3 md:mb-5">
                  <img src={p.thumbnail_url || 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600&q=80'} className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500" alt="" />
-                 <div className="absolute top-4 left-4 bg-surface-900/80 backdrop-blur-md px-2 py-1 rounded-lg text-[10px] font-black text-brand-primary uppercase tracking-widest border border-brand-primary/20">
+                 <div className="absolute top-2 left-2 md:top-4 md:left-4 bg-surface-900/80 backdrop-blur-md px-1.5 py-0.5 md:px-2 md:py-1 rounded-lg text-[8px] md:text-[10px] font-black text-brand-primary uppercase tracking-widest border border-brand-primary/20">
                    {p.category}
                  </div>
                </div>
                
-               <div className="space-y-3">
-                  <Link to={`/product/${p.slug}`} className="text-lg font-black text-white hover:text-brand-primary transition-colors line-clamp-1 block leading-tight">
+               <div className="space-y-2 md:space-y-3">
+                  <Link to={`/product/${p.slug}`} className="text-sm md:text-lg font-black text-white hover:text-brand-primary transition-colors line-clamp-1 block leading-tight">
                     {p.name}
                   </Link>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 md:gap-3">
                      <div className="flex items-center gap-1">
-                        <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                        <span className="text-xs text-zinc-300 font-bold">4.8</span>
+                        <Star className="w-2 md:w-3 h-2 md:h-3 text-yellow-400 fill-yellow-400" />
+                        <span className="text-[10px] md:text-xs text-zinc-300 font-bold">4.8</span>
                      </div>
                      <div className="w-1 h-1 bg-zinc-700 rounded-full"></div>
                      <div className="flex items-center gap-1">
-                        <Download className="w-3 h-3 text-zinc-500" />
-                        <span className="text-xs text-zinc-500 font-bold">{p.sales_count} Sales</span>
+                        <Download className="w-2 md:w-3 h-2 md:h-3 text-zinc-500" />
+                        <span className="text-[10px] md:text-xs text-zinc-500 font-bold">{p.sales_count}</span>
                      </div>
                   </div>
 
@@ -155,11 +155,11 @@ export default function Shop() {
 
                   <div className="flex items-center justify-between pt-2">
                     <div>
-                        <span className="text-[9px] uppercase font-bold text-zinc-600 block tracking-wider">Harga</span>
-                        <span className="font-black text-xl text-white">Rp {p.price.toLocaleString('id-ID')}</span>
+                        <span className="text-[8px] md:text-[9px] uppercase font-bold text-zinc-600 block tracking-wider">Harga</span>
+                        <span className="font-black text-sm md:text-xl text-white">Rp {p.price.toLocaleString('id-ID')}</span>
                     </div>
-                    <Link to={`/checkout/${p.id}`} className="w-12 h-12 bg-brand-primary text-white rounded-xl flex items-center justify-center hover:bg-brand-secondary transition-all shadow-lg shadow-brand-primary/20">
-                        <ShoppingCart className="w-5 h-5" />
+                    <Link to={`/checkout/${p.id}`} className="w-8 h-8 md:w-12 md:h-12 bg-brand-primary text-white rounded-lg md:rounded-xl flex items-center justify-center hover:bg-brand-secondary transition-all shadow-lg shadow-brand-primary/20">
+                        <ShoppingCart className="w-4 h-4 md:w-5 md:h-5" />
                     </Link>
                   </div>
                </div>
