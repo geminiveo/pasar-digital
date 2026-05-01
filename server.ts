@@ -3,6 +3,10 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
 import axios from "axios";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const midtransClient = require('midtrans-client');
 
 const app = express();
 
@@ -175,52 +179,42 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
 
   try {
     const { createClient } = await import('@supabase/supabase-js');
-    const supabaseUrl = process.env.VITE_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      console.error("SUPABASE_URL or SERVICE_ROLE_KEY is missing in environment");
-      return res.status(500).json({ error: "Server environment configuration error." });
-    }
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
-    const { data: settings, error: settingsError } = await supabaseAdmin
+    const { data: settings } = await supabaseAdmin
       .from('system_settings')
       .select('config')
       .eq('id', 'midtrans_config')
       .single();
 
-    if (settingsError || !settings?.config?.server_key) {
-      console.error("Midtrans config error:", settingsError);
+    if (!settings?.config?.server_key) {
       return res.status(500).json({ error: "Midtrans Server Key is missing in admin settings." });
     }
 
-    const serverKey = settings.config.server_key.trim();
-    const isProduction = !settings.config.is_sandbox;
-    
-    // Official Snap API endpoints
-    const midtransUrl = isProduction 
-      ? 'https://app.midtrans.com/snap/v1/transactions' 
-      : 'https://app.sandbox.midtrans.com/snap/v1/transactions';
+    // Initialize Midtrans Snap API
+    const snap = new midtransClient.Snap({
+      isProduction: !settings.config.is_sandbox,
+      serverKey: settings.config.server_key.trim(),
+      clientKey: settings.config.client_key?.trim() || ''
+    });
 
-    const authHeader = `Basic ${Buffer.from(serverKey + ':').toString('base64')}`;
-
-    // Clean up item_details to only include required fields
+    // Clean up item_details to only include required fields for Midtrans API
     const cleanedItems = (item_details || []).map((item: any) => ({
-      id: item.id || 'item-1',
+      id: String(item.id || 'item-1'),
       price: Math.floor(Number(item.price)),
       quantity: Number(item.quantity) || 1,
       name: (item.name || 'Digital Product').substring(0, 50)
     }));
 
-    // Ensure gross_amount matches items total
-    const calculatedGross = cleanedItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
+    // Re-verify gross_amount matches items total to prevent "A server error has occurred"
+    const calculatedGross = cleanedItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || Math.floor(amount);
 
     const parameter = {
       transaction_details: {
-        // Append a unique suffix to prevent duplicate order_id errors in Midtrans
-        // This is safe because we use order_id_external to track back to our DB
+        // order_id must be unique for every request to Midtrans
         order_id: `${order_id}-${Date.now()}`,
         gross_amount: calculatedGross
       },
@@ -235,33 +229,20 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       item_details: cleanedItems
     };
 
-    console.log("Midtrans Payload:", JSON.stringify(parameter, null, 2));
-
-    const response = await axios.post(midtransUrl, parameter, {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': authHeader
-      },
-      timeout: 10000 // 10 seconds timeout
-    });
-
-    console.log("Midtrans Response:", response.status, response.data);
-    res.json(response.data);
-  } catch (error: any) {
-    if (axios.isAxiosError(error) && error.response) {
-      console.error("Midtrans API Error Details:", error.response.status, JSON.stringify(error.response.data));
-      return res.status(error.response.status).json({
-        error: "Midtrans API Error",
-        message: error.message,
-        details: error.response.data
-      });
-    }
+    console.log("Creating Midtrans Transaction with parameters:", JSON.stringify(parameter));
+    const transaction = await snap.createTransaction(parameter);
+    console.log("Midtrans Transaction Token Created:", transaction.token);
     
-    console.error("Internal Server Error during Midtrans token creation:", error);
+    res.json(transaction);
+  } catch (error: any) {
+    console.error("Midtrans API Error:", error.message);
+    const responseData = error.ApiResponse || null;
+    
     res.status(500).json({ 
-      error: "Internal Server Error",
-      message: error.message || "Unknown error occurred"
+      error: "Midtrans API Error",
+      message: error.message || "Gagal membuat token pembayaran",
+      details: responseData,
+      code: responseData?.code || "500"
     });
   }
 });
