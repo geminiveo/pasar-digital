@@ -191,54 +191,47 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
-    const { data: settings, error: settingsError } = await supabaseAdmin
+    const { data: settings } = await supabaseAdmin
       .from('system_settings')
       .select('config')
       .eq('id', 'midtrans_config')
       .single();
 
-    if (settingsError) {
-      return res.status(500).json({ error: "Gagal membaca database", message: settingsError.message });
-    }
-
-    // 1. Pembersihan Kunci secara Agresif
-    let serverKey = String(settings?.config?.server_key || '').trim();
+    // 1. Ambil Server Key (Prioritas Database, lalu Fallback ke Env Var Vercel)
+    let serverKey = String(settings?.config?.server_key || process.env.MIDTRANS_SERVER_KEY || '').trim();
+    // Bersihkan karakter aneh
     serverKey = serverKey.replace(/['"]+/g, '').replace(/[\r\n\t]/g, '').replace(/\s/g, '');
-    
     if (serverKey.includes(':')) serverKey = serverKey.split(':')[0];
-    
-    if (!serverKey || serverKey.length < 10) {
-      return res.status(400).json({ error: "Server Key Midtrans Belum Diisi di Dashboard Admin" });
-    }
-    
-    // PERBAIKAN: Pastikan is_sandbox terdeteksi dengan benar (String vs Boolean)
-    const rawSandbox = settings.config.is_sandbox;
-    const isSandboxMode = rawSandbox === true || rawSandbox === 'true' || rawSandbox === 1;
 
-    // 2. Deteksi Key Mismatch
+    // 2. Tentukan Mode (Prioritas Database, lalu Fallback ke Env Var Vercel)
+    const rawSandbox = settings?.config?.is_sandbox ?? process.env.VITE_MIDTRANS_IS_SANDBOX;
+    const isSandboxMode = rawSandbox === true || rawSandbox === 'true' || rawSandbox === 1 || rawSandbox === "1";
+
+    if (!serverKey || serverKey.length < 10) {
+      return res.status(400).json({ 
+        error: "Server Key Kosong", 
+        message: "Server Key tidak ditemukan di Database maupun Environment Variables Vercel (MIDTRANS_SERVER_KEY)." 
+      });
+    }
+
+    // 3. Deteksi Key Mismatch
     const isSandboxKey = serverKey.startsWith('SB-');
     if (isSandboxMode && !isSandboxKey) {
-      return res.status(400).json({ 
-        error: "Konfigurasi Error",
-        message: "Anda menggunakan Mode Sandbox tapi memasukkan Key Production (Key Sandbox harus diawali 'SB-')."
-      });
+      return res.status(400).json({ error: "KEY MISMATCH: Mode Sandbox Aktif tapi Anda menggunakan Production Key (Key Sandbox harus diawali 'SB-')." });
     }
     if (!isSandboxMode && isSandboxKey) {
-      return res.status(400).json({ 
-        error: "Konfigurasi Error",
-        message: "Anda menggunakan Mode Production tapi memasukkan Key Sandbox (Key Sandbox diawali 'SB-')."
-      });
+      return res.status(400).json({ error: "KEY MISMATCH: Mode Production Aktif tapi Anda menggunakan Sandbox Key (Key Production tidak diawali 'SB-')." });
     }
 
-    // 3. Setup Auth & URL
+    // 4. Setup Auth & URL
     const authHeader = `Basic ${Buffer.from(serverKey + ':').toString('base64')}`;
     const midtransUrl = isSandboxMode 
       ? 'https://app.sandbox.midtrans.com/snap/v1/transactions' 
       : 'https://app.midtrans.com/snap/v1/transactions';
 
-    // 4. Setup Payload PALING AMAN (Tanpa item_details dulu untuk tes koneksi murni)
-    const totalAmount = Math.max(1000, Math.floor(Number(amount))); // Minimal 1000 untuk keamanan
-    const uniqueId = `PDEL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    // 5. Setup Payload minimalis
+    const totalAmount = Math.max(1000, Math.floor(Number(amount))); 
+    const uniqueId = `PDEL-${Date.now()}`;
     
     const parameter: any = {
       transaction_details: {
@@ -255,13 +248,14 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       };
     }
 
-    console.log(`[DEBUG] Mengirim ke ${isSandboxMode ? 'SANDBOX' : 'PRODUCTION'} dengan Order ID: ${uniqueId}`);
+    console.log(`[Midtrans] Attempting ${isSandboxMode ? 'SANDBOX' : 'PRODUCTION'} request...`);
     
     const response = await axios.post(midtransUrl, parameter, {
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
-        'Authorization': authHeader
+        'Authorization': authHeader,
+        'User-Agent': 'Vercel-PasarDigital'
       },
       timeout: 15000 
     });
@@ -269,20 +263,18 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
     res.json(response.data);
   } catch (error: any) {
     const midtransError = error.response?.data;
-    console.error("MIDTRANS_API_ERROR:", JSON.stringify(midtransError || error.message));
     
     res.status(error.response?.status || 500).json({
-      error: "Midtrans Refused Connection",
-      message: midtransError?.message || midtransError?.status_message || error.message,
-      troubleshoot: {
-        hint: "Pesan 500 dari Midtrans biasanya berarti Server Key salah atau IP terblokir.",
-        steps: [
-          "1. BUKA Dashboard Midtrans > Settings > Configuration.",
-          "2. PASTIKAN 'Payment API IP Whitelist' KOSONG.",
-          "3. PASTIKAN Server Key sudah pas (Sandbox vs Production).",
-        ]
+      error: "Midtrans API Failure",
+      diagnostics: {
+        status: error.response?.status,
+        mode: isSandboxMode ? "SANDBOX" : "PRODUCTION",
+        key_hint: serverKey ? `${serverKey.substring(0, 5)}***` : "MISSING",
+        is_sandbox_key: serverKey?.startsWith('SB-'),
+        source: settings?.config?.server_key ? "Database (Supabase)" : "Environment (Vercel)"
       },
-      details: midtransError
+      message: midtransError?.error_messages?.[0] || midtransError?.status_message || error.message,
+      troubleshoot: "Jika 401 Unauthorized, pastikan Server Key benar dan 'IP Whitelist' di Midtrans Dashboard KOSONG."
     });
   }
 });
