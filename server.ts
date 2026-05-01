@@ -3,8 +3,10 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
 import axios from "axios";
+import { createRequire } from "module";
 
-import * as midtransClient from 'midtrans-client';
+const require = createRequire(import.meta.url);
+const midtransClient = require('midtrans-client');
 
 const app = express();
 
@@ -182,25 +184,17 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
     // Initialize Midtrans Snap
     let snap;
     try {
-      // Handle both CJS and ESM import patterns for midtrans-client
-      const SnapConstructor = (midtransClient as any).Snap || (midtransClient as any).default?.Snap;
+      const serverKey = settings.config.server_key.trim();
+      const clientKey = settings.config.client_key.trim();
+      const isProduction = !settings.config.is_sandbox;
+
+      console.log("Initializing Midtrans Snap:", { isProduction });
       
-      if (!SnapConstructor) {
-        // Fallback for some bundling environments
-        const midtrans = await import('midtrans-client');
-        const FallbackSnap = (midtrans as any).Snap || (midtrans as any).default?.Snap || (midtrans as any).default;
-        snap = new FallbackSnap({
-          isProduction: !settings.config.is_sandbox,
-          serverKey: settings.config.server_key,
-          clientKey: settings.config.client_key
-        });
-      } else {
-        snap = new SnapConstructor({
-          isProduction: !settings.config.is_sandbox,
-          serverKey: settings.config.server_key,
-          clientKey: settings.config.client_key
-        });
-      }
+      snap = new midtransClient.Snap({
+        isProduction,
+        serverKey,
+        clientKey
+      });
     } catch (err: any) {
       console.error("Failed to initialize midtrans-client:", err);
       return res.status(500).json({ error: "Gagal inisialisasi library Midtrans: " + err.message });
@@ -209,7 +203,7 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
     const parameter = {
       transaction_details: {
         order_id: order_id,
-        gross_amount: amount
+        gross_amount: Math.floor(amount)
       },
       credit_card: {
         secure: true
@@ -225,9 +219,14 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
     res.json(transaction);
   } catch (error: any) {
     console.error("Midtrans API Error Details:", error);
+    // Determine if error is from Midtrans API response or local execution
+    const responseData = error.ApiResponse || (error.response && error.response.data) || null;
+    
     res.status(500).json({ 
-      error: error.message || "Gagal membuat token Midtrans",
-      details: error.ApiResponse || error
+      error: "Midtrans API Error",
+      message: error.message || "Gagal membuat token pembayaran",
+      details: responseData || error.toString(),
+      code: error.code || (responseData && responseData.code) || "500"
     });
   }
 });
