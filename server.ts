@@ -195,65 +195,81 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       .single();
 
     if (settingsError || !settings?.config?.server_key) {
-      return res.status(500).json({ error: "Midtrans Server Key not found in database settings." });
+      return res.status(500).json({ error: "Server Key tidak ditemukan. Pastikan sudah diisi di Admin > Settings." });
     }
 
-    const serverKey = settings.config.server_key.trim().replace(/['"]+/g, '');
-    const clientKey = (settings.config.client_key || '').trim().replace(/['"]+/g, '');
-    const isProduction = !settings.config.is_sandbox;
+    // 1. Pembersihan Kunci secara Agresif (Penyebab umum Error 500)
+    // Menghapus spasi, tanda kutip, atau karakter non-printable
+    const serverKey = settings.config.server_key.trim().replace(/['"]+/g, '').replace(/\s/g, '');
+    const isSandboxMode = !!settings.config.is_sandbox;
 
-    // Use commonjs require fallback for midtrans-client which is CJS
-    const midtransClient = require('midtrans-client');
-    const snap = new midtransClient.Snap({
-      isProduction: isProduction,
-      serverKey: serverKey,
-      clientKey: clientKey
+    // 2. Deteksi Key Mismatch
+    if (isSandboxMode && !serverKey.startsWith('SB-')) {
+      return res.status(400).json({ error: "MISMATCH: Anda memakai 'Mode Sandbox' tapi Key 'Production' (Key Sandbox harus diawali SB-)." });
+    }
+    if (!isSandboxMode && serverKey.startsWith('SB-')) {
+      return res.status(400).json({ error: "MISMATCH: Anda memakai 'Mode Production' tapi Key 'Sandbox' (Key Production tidak diawali SB-)." });
+    }
+
+    // 3. Setup Auth Header (Direct Axios jauh lebih stabil di Vercel)
+    const authHeader = `Basic ${Buffer.from(serverKey + ':').toString('base64')}`;
+    const midtransUrl = isSandboxMode 
+      ? 'https://app.sandbox.midtrans.com/snap/v1/transactions' 
+      : 'https://app.midtrans.com/snap/v1/transactions';
+
+    const cleanedItems = (item_details || []).map((item: any, idx: number) => {
+      const price = Math.max(0, Math.round(Number(item.price)));
+      const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
+      return {
+        id: String(item.id || `it-${idx}`).substring(0, 50),
+        price: price,
+        quantity: qty,
+        name: (item.name || 'Produk Digital').replace(/[^\x20-\x7E]/g, '').substring(0, 50)
+      };
     });
 
-    // Sanitize order_id: max 50 chars, alphanumeric + dash + underscore
-    const safeOrderId = `T-${Date.now()}`.substring(0, 50);
+    const total = cleanedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0) || Math.round(amount);
 
     const parameter = {
       transaction_details: {
-        order_id: safeOrderId,
-        gross_amount: Math.floor(amount)
+        order_id: `INV-${Date.now()}-${order_id.substring(0, 4)}`,
+        gross_amount: total
       },
+      item_details: cleanedItems.length > 0 ? cleanedItems : undefined,
       customer_details: {
         first_name: (customer_details?.first_name || 'Buyer').substring(0, 20),
-        email: customer_details?.email || 'buyer@example.com'
+        email: customer_details?.email?.includes('@') ? customer_details.email : 'buyer@example.com'
       },
-      // Include items but ensure total matches gross_amount
-      item_details: (item_details || []).map((item: any) => ({
-        id: (item.id || 'it').substring(0, 50),
-        price: Math.floor(Number(item.price)),
-        quantity: Number(item.quantity) || 1,
-        name: (item.name || 'Product').substring(0, 50)
-      }))
+      credit_card: { secure: true }
     };
 
-    // Calculate total price to ensure it matches gross_amount exactly
-    const calculatedTotal = parameter.item_details.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    if (calculatedTotal !== parameter.transaction_details.gross_amount) {
-      // Adjustment item if they differ due to rounding
-      parameter.transaction_details.gross_amount = calculatedTotal;
-    }
-
-    console.log("Initiating Midtrans Transaction:", safeOrderId);
-    const transaction = await snap.createTransaction(parameter);
+    console.log("Memanggil Midtrans Direct API...");
     
-    console.log("Transaction Success:", transaction.token);
-    res.json(transaction);
-  } catch (error: any) {
-    console.error("Midtrans Library Error:", error.message);
-    
-    // Extract deep error from Midtrans library
-    const apiResponse = error.ApiResponse || (error.response && error.response.data) || null;
-    
-    res.status(500).json({ 
-      error: "Midtrans API Failure",
-      message: error.message,
-      details: apiResponse
+    const response = await axios.post(midtransUrl, parameter, {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': authHeader
+      },
+      timeout: 15000 
     });
+
+    console.log("Midtrans Success:", response.status);
+    res.json(response.data);
+  } catch (error: any) {
+    if (axios.isAxiosError(error)) {
+      const apiErr = error.response?.data;
+      console.error("Midtrans API Rejected:", JSON.stringify(apiErr));
+      
+      return res.status(error.response?.status || 500).json({
+        error: "Ditolak Midtrans",
+        message: apiErr?.error_messages?.[0] || apiErr?.message || error.message,
+        details: apiErr
+      });
+    }
+    
+    console.error("Critical System Error:", error.message);
+    res.status(500).json({ error: "System Error", message: error.message });
   }
 });
 
