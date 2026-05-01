@@ -610,6 +610,19 @@ export default function AdminView() {
               <Shield className="w-5 h-5 text-brand-primary" /> Pakasir (Payment Gateway)
             </h3>
             <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-surface-700/50 rounded-xl border border-white/5">
+                <div>
+                  <p className="text-sm font-bold text-white">Status Gateway</p>
+                  <p className="text-[10px] text-zinc-500 uppercase font-black">Aktifkan Pakasir</p>
+                </div>
+                <button 
+                  onClick={() => setData({ ...data, settings: { ...data.settings, pakasir_config: { ...data.settings.pakasir_config, active: !data.settings.pakasir_config?.active }}})}
+                  className={`w-12 h-6 rounded-full transition-all relative ${data.settings?.pakasir_config?.active ? 'bg-brand-primary' : 'bg-zinc-700'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${data.settings?.pakasir_config?.active ? 'left-7' : 'left-1'}`} />
+                </button>
+              </div>
+
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-zinc-500 uppercase">Project Slug</label>
                 <input 
@@ -627,6 +640,32 @@ export default function AdminView() {
                   onChange={(e) => setData({ ...data, settings: { ...data.settings, pakasir_config: { ...data.settings.pakasir_config, api_key: e.target.value }}})}
                   className="w-full bg-surface-700 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-brand-primary font-mono" 
                 />
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <label className="text-[10px] font-black text-zinc-500 uppercase block border-b border-white/5 pb-2">Metode Pembayaran Pakasir</label>
+                {[
+                  { id: 'qris', name: 'QRIS (All E-Wallet)' },
+                  { id: 'bni_va', name: 'BNI Virtual Account' },
+                  { id: 'bri_va', name: 'BRI Virtual Account' },
+                  { id: 'cimb_va', name: 'CIMB Niaga VA' },
+                  { id: 'mandiri_va', name: 'Mandiri Bill' },
+                  { id: 'permata_va', name: 'Permata VA' }
+                ].map(method => (
+                  <div key={method.id} className="flex items-center justify-between py-1">
+                    <span className="text-xs font-bold text-zinc-400">{method.name}</span>
+                    <button 
+                      onClick={() => {
+                        const enabledMethods = { ...(data.settings.pakasir_config?.enabled_methods || {}) };
+                        enabledMethods[method.id] = !enabledMethods[method.id];
+                        setData({ ...data, settings: { ...data.settings, pakasir_config: { ...data.settings.pakasir_config, enabled_methods: enabledMethods }}});
+                      }}
+                      className={`w-10 h-5 rounded-full transition-all relative ${data.settings?.pakasir_config?.enabled_methods?.[method.id] ? 'bg-brand-primary' : 'bg-zinc-800 border border-white/5'}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${data.settings?.pakasir_config?.enabled_methods?.[method.id] ? 'left-5.5' : 'left-0.5'}`} />
+                    </button>
+                  </div>
+                ))}
               </div>
               <div className="p-3 bg-brand-primary/5 border border-brand-primary/20 rounded-xl">
                 <p className="text-[10px] font-black text-brand-primary uppercase mb-1">Webhook URL</p>
@@ -660,6 +699,19 @@ export default function AdminView() {
               <CreditCard className="w-5 h-5 text-brand-primary" /> Midtrans (Payment Gateway)
             </h3>
             <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-surface-700/50 rounded-xl border border-white/5">
+                <div>
+                  <p className="text-sm font-bold text-white">Status Gateway</p>
+                  <p className="text-[10px] text-zinc-500 uppercase font-black">Aktifkan Midtrans</p>
+                </div>
+                <button 
+                  onClick={() => setData({ ...data, settings: { ...data.settings, midtrans_config: { ...data.settings.midtrans_config, active: !data.settings.midtrans_config?.active }}})}
+                  className={`w-12 h-6 rounded-full transition-all relative ${data.settings?.midtrans_config?.active ? 'bg-brand-primary' : 'bg-zinc-700'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${data.settings?.midtrans_config?.active ? 'left-7' : 'left-1'}`} />
+                </button>
+              </div>
+
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-zinc-500 uppercase">Merchant ID</label>
                 <input 
