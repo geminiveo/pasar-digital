@@ -26,8 +26,11 @@ export default function Checkout() {
   useEffect(() => {
     if (!currentOrderSupabaseId) return;
 
+    // Use a unique channel name to avoid "after subscribe" errors if useEffect runs twice
+    const channelName = `order-status-${currentOrderSupabaseId}-${Math.floor(Math.random() * 1000000)}`;
+    
     const channel = supabase
-      .channel('checkout-order-status')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -38,6 +41,8 @@ export default function Checkout() {
         },
         (payload) => {
           if (payload.new.status === 'completed') {
+            setPaymentData(null);
+            setPaymentLoading(false);
             toast.success("Pembayaran Berhasil Dikonfirmasi!");
             setTimeout(() => navigate('/dashboard/orders'), 1500);
           }
