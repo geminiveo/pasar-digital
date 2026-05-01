@@ -122,36 +122,37 @@ export default function Home() {
           </Link>
         </div>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8">
           {trendingProducts.length > 0 ? trendingProducts.map((p) => (
             <motion.div 
               key={p.id}
               whileHover={{ y: -8 }}
-              className="glass-card p-4 flex flex-col h-full bg-surface-800/30 overflow-hidden group border-zinc-800 hover:border-brand-primary/50"
+              className="glass-card p-3 md:p-4 flex flex-col h-full bg-surface-800/30 overflow-hidden group border-zinc-800 hover:border-brand-primary/50"
             >
-              <div className="relative aspect-[4/3] rounded-xl overflow-hidden mb-4 bg-zinc-900">
+              <div className="relative aspect-[4/3] rounded-lg md:rounded-xl overflow-hidden mb-3 md:mb-4 bg-zinc-900">
                 <img src={p.thumbnail_url || 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800&q=80'} alt={p.name} className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500" />
-                <div className="absolute top-3 left-3 bg-brand-primary/90 text-white text-[10px] uppercase font-bold px-2 py-0.5 rounded backdrop-blur-sm">
+                <div className="absolute top-2 left-2 md:top-3 md:left-3 bg-brand-primary/90 text-white text-[8px] md:text-[10px] uppercase font-bold px-1.5 py-0.5 rounded backdrop-blur-sm">
                   {p.category}
                 </div>
               </div>
-              <Link to={`/product/${p.slug}`} className="text-lg font-bold mb-2 line-clamp-1 hover:text-brand-primary transition-colors">
+              <Link to={`/product/${p.slug}`} className="text-sm md:text-lg font-bold mb-1 md:mb-2 line-clamp-1 hover:text-brand-primary transition-colors">
                 {p.name}
               </Link>
-              <div className="flex items-center gap-1 text-zinc-500 text-xs mb-6">
+              <div className="flex items-center gap-1 text-zinc-500 text-[10px] mb-4 md:mb-6">
                 <Download className="w-3 h-3" />
-                <span>{p.sales_count} Penjualan</span>
-                <span className="mx-2 opacity-30">•</span>
+                <span className="hidden md:inline">{p.sales_count} Penjualan</span>
+                <span className="md:hidden">{p.sales_count}</span>
+                <span className="mx-1 md:mx-2 opacity-30">•</span>
                 <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
                 <span>5.0</span>
               </div>
               <div className="mt-auto flex items-center justify-between">
                 <div>
-                  <span className="text-zinc-500 text-[10px] uppercase block font-bold tracking-wider">Harga</span>
-                  <span className="text-xl font-black text-white">Rp {p.price.toLocaleString('id-ID')}</span>
+                  <span className="text-zinc-500 text-[8px] md:text-[10px] uppercase block font-bold tracking-wider">Harga</span>
+                  <span className="text-sm md:text-xl font-black text-white">Rp {p.price.toLocaleString('id-ID')}</span>
                 </div>
-                <Link to={`/checkout/${p.id}`} className="p-2.5 bg-brand-primary rounded-lg text-white hover:bg-brand-secondary transition-all shadow-lg shadow-brand-primary/10">
-                  <ShoppingCart className="w-5 h-5" />
+                <Link to={`/checkout/${p.id}`} className="p-2 md:p-2.5 bg-brand-primary rounded-lg text-white hover:bg-brand-secondary transition-all shadow-lg shadow-brand-primary/10">
+                  <ShoppingCart className="w-4 h-4 md:w-5 md:h-5" />
                 </Link>
               </div>
             </motion.div>
