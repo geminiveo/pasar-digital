@@ -211,39 +211,43 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       return res.status(400).json({ error: "MISMATCH: Anda memakai 'Mode Production' tapi Key 'Sandbox' (Key Production tidak diawali SB-)." });
     }
 
-    // 3. Setup Auth Header (Direct Axios jauh lebih stabil di Vercel)
+    // 3. Setup Auth & URL
     const authHeader = `Basic ${Buffer.from(serverKey + ':').toString('base64')}`;
     const midtransUrl = isSandboxMode 
       ? 'https://app.sandbox.midtrans.com/snap/v1/transactions' 
       : 'https://app.midtrans.com/snap/v1/transactions';
 
-    const cleanedItems = (item_details || []).map((item: any, idx: number) => {
-      const price = Math.max(0, Math.round(Number(item.price)));
-      const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
-      return {
-        id: String(item.id || `it-${idx}`).substring(0, 50),
-        price: price,
-        quantity: qty,
-        name: (item.name || 'Produk Digital').replace(/[^\x20-\x7E]/g, '').substring(0, 50)
-      };
-    });
+    // 4. Setup Payload (Gunakan format paling minimalis & aman)
+    const totalAmount = Math.floor(Number(amount));
+    
+    if (isNaN(totalAmount) || totalAmount <= 100) {
+      return res.status(400).json({ error: "Jumlah pembayaran tidak valid (Minimal Rp 100)" });
+    }
 
-    const total = cleanedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0) || Math.round(amount);
+    // Gunakan prefix order d-id yang sangat standar: ORD-TIMESTAMP-RAND
+    const timestamp = Date.now().toString().slice(-6);
+    const random = Math.floor(Math.random() * 1000);
+    const safeOrderId = `ORD-${timestamp}-${random}`;
 
-    const parameter = {
+    const parameter: any = {
       transaction_details: {
-        order_id: `INV-${Date.now()}-${order_id.substring(0, 4)}`,
-        gross_amount: total
+        order_id: safeOrderId,
+        gross_amount: totalAmount
       },
-      item_details: cleanedItems.length > 0 ? cleanedItems : undefined,
-      customer_details: {
-        first_name: (customer_details?.first_name || 'Buyer').substring(0, 20),
-        email: customer_details?.email?.includes('@') ? customer_details.email : 'buyer@example.com'
-      },
-      credit_card: { secure: true }
+      credit_card: {
+        secure: true
+      }
     };
 
-    console.log("Memanggil Midtrans Direct API...");
+    // Tambahkan customer jika data valid (Midtrans mewajibkan email untuk beberapa fitur)
+    if (customer_details?.email && customer_details.email.includes('@')) {
+      parameter.customer_details = {
+        first_name: String(customer_details.first_name || 'Customer').substring(0, 20).replace(/[^a-zA-Z]/g, ''),
+        email: customer_details.email
+      };
+    }
+
+    console.log("Midtrans Request Payload:", JSON.stringify(parameter));
     
     const response = await axios.post(midtransUrl, parameter, {
       headers: {
@@ -254,22 +258,23 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       timeout: 15000 
     });
 
-    console.log("Midtrans Success:", response.status);
+    console.log("Midtrans Response Success:", safeOrderId);
     res.json(response.data);
   } catch (error: any) {
     if (axios.isAxiosError(error)) {
-      const apiErr = error.response?.data;
-      console.error("Midtrans API Rejected:", JSON.stringify(apiErr));
+      const midtransError = error.response?.data;
+      console.error("Midtrans API Rejected Data:", JSON.stringify(midtransError));
       
       return res.status(error.response?.status || 500).json({
-        error: "Ditolak Midtrans",
-        message: apiErr?.error_messages?.[0] || apiErr?.message || error.message,
-        details: apiErr
+        error: "Ditolak dari Midtrans API",
+        message: midtransError?.message || midtransError?.status_message || error.message,
+        details: midtransError,
+        sent_payload_summary: `Amount: ${Math.floor(Number(amount))}`
       });
     }
     
-    console.error("Critical System Error:", error.message);
-    res.status(500).json({ error: "System Error", message: error.message });
+    console.error("Fatal System Error:", error.message);
+    res.status(500).json({ error: "Internal Server Error", message: error.message });
   }
 });
 
