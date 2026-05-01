@@ -140,24 +140,32 @@ export default function Checkout() {
             });
           } else {
             console.error("Midtrans server error payload:", response.data);
-            const errorDetail = response.data.details?.ApiResponse?.error_messages?.[0] || response.data.error;
+            const errorDetail = response.data.message || response.data.details?.status_message || response.data.error;
             throw new Error(errorDetail || "Gagal mendapatkan token transaksi.");
           }
         } catch (err: any) {
-          console.error("Midtrans Payment Details:", err);
+          console.error("Midtrans Payment Details Error:", err);
           let errMsg = "Gagal menghubungi gateway pembayaran.";
           
           if (err.response?.data) {
             const data = err.response.data;
-            if (typeof data === 'string') errMsg = data;
-            else if (data.error) errMsg = typeof data.error === 'object' ? JSON.stringify(data.error) : data.error;
-            else if (data.message) errMsg = data.message;
-            else errMsg = JSON.stringify(data);
+            // Jika data memiliki format JSON Midtrans {"code":"500", ...}
+            if (data.details && typeof data.details === 'object') {
+              errMsg = data.message || data.details.status_message || JSON.stringify(data.details);
+            } else if (data.message) {
+              errMsg = data.message;
+            } else if (data.error) {
+              errMsg = data.error;
+            } else {
+              errMsg = JSON.stringify(data);
+            }
           } else if (err.message) {
             errMsg = err.message;
           }
           
-          toast.error(`Midtrans: ${errMsg}`);
+          toast.error(`Midtrans: ${errMsg}`, {
+            description: "Pastikan Server Key di Admin > Settings sudah benar sesuai lingkungannya (Sandbox/Production)."
+          });
         }
         return;
       }
