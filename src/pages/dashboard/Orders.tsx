@@ -102,8 +102,8 @@ export default function Orders({ profile }: { profile: Profile }) {
                         {order.status === 'completed' && (
                           <button 
                             onClick={() => {
-                              if (order.product?.file_url) {
-                                window.open(order.product.file_url, '_blank');
+                              if (order.product?.download_url) {
+                                window.open(order.product.download_url, '_blank');
                               } else {
                                 toast.error("File produk tidak tersedia.");
                               }
