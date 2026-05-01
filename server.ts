@@ -179,71 +179,87 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
 
   try {
     const { createClient } = await import('@supabase/supabase-js');
-    const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error("EROR: Environment Variables Supabase tidak ditemukan di Vercel!");
+      return res.status(500).json({ 
+        error: "Konfigurasi Server Error", 
+        message: "Environment Variables (SUPABASE_SERVICE_ROLE_KEY) belum diisi di dashboard Vercel/Hosting." 
+      });
+    }
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
-    const { data: settings } = await supabaseAdmin
+    const { data: settings, error: settingsError } = await supabaseAdmin
       .from('system_settings')
       .select('config')
       .eq('id', 'midtrans_config')
       .single();
 
-    if (!settings?.config?.server_key) {
-      return res.status(500).json({ error: "Midtrans Server Key is missing in admin settings." });
+    if (settingsError || !settings?.config?.server_key) {
+      return res.status(500).json({ error: "Server Key tidak ditemukan. Silakan cek menu Admin > Midtrans Settings." });
     }
 
-    // Initialize Midtrans Snap API
-    const snap = new midtransClient.Snap({
-      isProduction: !settings.config.is_sandbox,
-      serverKey: settings.config.server_key.trim(),
-      clientKey: settings.config.client_key?.trim() || ''
-    });
+    // Bersihkan Server Key dari spasi atau tanda kutip tersembunyi
+    const serverKey = settings.config.server_key.trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
+    const configIsSandbox = !!settings.config.is_sandbox;
+    const isSandboxKey = serverKey.startsWith('SB-');
 
-    // Clean up item_details to only include required fields for Midtrans API
-    const cleanedItems = (item_details || []).map((item: any) => ({
-      id: String(item.id || 'item-1'),
-      price: Math.floor(Number(item.price)),
-      quantity: Number(item.quantity) || 1,
-      name: (item.name || 'Digital Product').substring(0, 50)
-    }));
+    // Validasi Sandbox vs Production (Penyebab utama 500)
+    if (configIsSandbox && !isSandboxKey) {
+      return res.status(400).json({ error: "Anda di 'Mode Sandbox' tapi memakai Key 'Production'. Pakai key yang diawali 'SB-'." });
+    }
+    if (!configIsSandbox && isSandboxKey) {
+      return res.status(400).json({ error: "Anda di 'Mode Production' tapi memakai Key 'Sandbox'. Masukkan key asli tanpa awalan 'SB-'." });
+    }
 
-    // Re-verify gross_amount matches items total to prevent "A server error has occurred"
-    const calculatedGross = cleanedItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0) || Math.floor(amount);
+    const authHeader = `Basic ${Buffer.from(serverKey + ':').toString('base64')}`;
+    const midtransUrl = configIsSandbox 
+      ? 'https://app.sandbox.midtrans.com/snap/v1/transactions'
+      : 'https://app.midtrans.com/snap/v1/transactions';
 
+    // Payload minimalis untuk meminimalkan error validasi di server Midtrans
     const parameter = {
       transaction_details: {
-        // order_id must be unique for every request to Midtrans
-        order_id: `${order_id}-${Date.now()}`,
-        gross_amount: calculatedGross
+        order_id: `INV-${Date.now()}-${order_id.slice(0, 4)}`,
+        gross_amount: Math.floor(amount)
       },
-      credit_card: {
-        secure: true
-      },
+      // Gunakan email buyer jika ada, atau default jika tidak ada
       customer_details: {
-        first_name: customer_details?.first_name || 'Buyer',
         email: customer_details?.email || 'buyer@example.com',
-        phone: customer_details?.phone || ''
-      },
-      item_details: cleanedItems
+        first_name: (customer_details?.first_name || 'Buyer').replace(/[^a-zA-Z]/g, '')
+      }
     };
 
-    console.log("Creating Midtrans Transaction with parameters:", JSON.stringify(parameter));
-    const transaction = await snap.createTransaction(parameter);
-    console.log("Midtrans Transaction Token Created:", transaction.token);
+    console.log("Meminta Token Midtrans...");
     
-    res.json(transaction);
-  } catch (error: any) {
-    console.error("Midtrans API Error:", error.message);
-    const responseData = error.ApiResponse || null;
-    
-    res.status(500).json({ 
-      error: "Midtrans API Error",
-      message: error.message || "Gagal membuat token pembayaran",
-      details: responseData,
-      code: responseData?.code || "500"
+    const response = await axios.post(midtransUrl, parameter, {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': authHeader
+      },
+      timeout: 20000 
     });
+
+    console.log("Midtrans Response:", response.status);
+    res.json(response.data);
+  } catch (error: any) {
+    if (axios.isAxiosError(error)) {
+      const data = error.response?.data;
+      console.error("Midtrans API Gagal:", JSON.stringify(data));
+      
+      return res.status(error.response?.status || 500).json({
+        error: "Gagal dari API Midtrans",
+        message: data?.message || "Internal Midtrans Error",
+        details: data
+      });
+    }
+    
+    console.error("Fatal Error:", error.message);
+    res.status(500).json({ error: "Server Internal Error", message: error.message });
   }
 });
 
