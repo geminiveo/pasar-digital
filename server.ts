@@ -39,17 +39,30 @@ async function completeOrder(orderIdExternal: string, supabaseAdmin: any) {
     const platformFeePercent = settings?.config?.platform_fee || 10;
     const commission = platformFeePercent / 100;
 
-    // 2. Update Order Status (only if currently pending)
-    const { data: order, error: orderError } = await supabaseAdmin
+    // 2. Update Order Status (try internal ID first, then external ID)
+    let { data: order, error: orderError } = await supabaseAdmin
       .from('orders')
       .update({ status: 'completed' })
-      .eq('order_id_external', orderIdExternal)
+      .eq('id', orderIdExternal)
       .eq('status', 'pending')
       .select('*, buyer_id, amount, product_id')
-      .single();
+      .maybeSingle();
 
-    if (orderError) {
-      console.log(`Order ${orderIdExternal} already processed or not found:`, orderError.message);
+    if (!order) {
+      const { data: orderExt, error: orderExtError } = await supabaseAdmin
+        .from('orders')
+        .update({ status: 'completed' })
+        .eq('order_id_external', orderIdExternal)
+        .eq('status', 'pending')
+        .select('*, buyer_id, amount, product_id')
+        .maybeSingle();
+      
+      order = orderExt;
+      orderError = orderExtError;
+    }
+
+    if (orderError || !order) {
+      console.log(`Order ${orderIdExternal} already processed or not found.`);
       return null;
     }
 
