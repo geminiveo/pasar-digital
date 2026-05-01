@@ -145,7 +145,8 @@ export default function Checkout() {
           }
         } catch (err: any) {
           console.error("Midtrans Payment Details:", err);
-          const errMsg = err.response?.data?.error || err.message || "Gagal menghubungi gateway pembayaran.";
+          const rawError = err.response?.data?.error || err.message;
+          const errMsg = typeof rawError === 'object' ? JSON.stringify(rawError) : (rawError || "Gagal menghubungi gateway pembayaran.");
           toast.error(`Midtrans: ${errMsg}`);
         }
         return;
