@@ -198,10 +198,15 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       return res.status(500).json({ error: "Server Key tidak ditemukan. Pastikan sudah diisi di Admin > Settings." });
     }
 
-    // 1. Pembersihan Kunci secara Agresif (Penyebab umum Error 500)
-    // Menghapus spasi, tanda kutip, atau karakter non-printable
-    const serverKey = settings.config.server_key.trim().replace(/['"]+/g, '').replace(/\s/g, '');
+    // 1. Pembersihan Kunci secara Agresif
+    let serverKey = settings.config.server_key.trim();
+    // Bersihkan karakter aneh yang sering ikut saat copy-paste (quotes, hidden chars)
+    serverKey = serverKey.replace(/['"]+/g, '').replace(/\s/g, '');
+    
     const isSandboxMode = !!settings.config.is_sandbox;
+
+    console.log(`[Midtrans Debug] Env: ${isSandboxMode ? 'SANDBOX' : 'PRODUCTION'}`);
+    console.log(`[Midtrans Debug] Server Key (Prefix): ${serverKey.substring(0, 5)}...`);
 
     // 2. Deteksi Key Mismatch
     if (isSandboxMode && !serverKey.startsWith('SB-')) {
@@ -217,37 +222,36 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       ? 'https://app.sandbox.midtrans.com/snap/v1/transactions' 
       : 'https://app.midtrans.com/snap/v1/transactions';
 
-    // 4. Setup Payload (Gunakan format paling minimalis & aman)
-    const totalAmount = Math.floor(Number(amount));
+    // 4. Setup Payload (Paling minimalis agar tidak ditolak Midtrans)
+    const totalAmount = Math.max(100, Math.floor(Number(amount)));
     
-    if (isNaN(totalAmount) || totalAmount <= 100) {
-      return res.status(400).json({ error: "Jumlah pembayaran tidak valid (Minimal Rp 100)" });
-    }
-
-    // Gunakan prefix order d-id yang sangat standar: ORD-TIMESTAMP-RAND
-    const timestamp = Date.now().toString().slice(-6);
-    const random = Math.floor(Math.random() * 1000);
-    const safeOrderId = `ORD-${timestamp}-${random}`;
+    // Gunakan prefix yang unik setiap request
+    const uniqueId = `PD-${Date.now()}-${Math.floor(Math.random() * 100)}`;
 
     const parameter: any = {
       transaction_details: {
-        order_id: safeOrderId,
+        order_id: uniqueId,
         gross_amount: totalAmount
       },
+      item_details: (item_details || []).map((it: any) => ({
+        id: String(it.id || 'item').substring(0, 50),
+        price: Math.floor(Number(it.price || amount)),
+        quantity: 1,
+        name: String(it.name || 'Produk').substring(0, 50)
+      })),
       credit_card: {
         secure: true
       }
     };
 
-    // Tambahkan customer jika data valid (Midtrans mewajibkan email untuk beberapa fitur)
-    if (customer_details?.email && customer_details.email.includes('@')) {
+    if (customer_details?.email) {
       parameter.customer_details = {
-        first_name: String(customer_details.first_name || 'Customer').substring(0, 20).replace(/[^a-zA-Z]/g, ''),
-        email: customer_details.email
+        first_name: String(customer_details.first_name || 'Buyer').substring(0, 20),
+        email: String(customer_details.email)
       };
     }
 
-    console.log("Midtrans Request Payload:", JSON.stringify(parameter));
+    console.log("Midtrans Payload:", JSON.stringify(parameter));
     
     const response = await axios.post(midtransUrl, parameter, {
       headers: {
@@ -255,26 +259,20 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': authHeader
       },
-      timeout: 15000 
+      timeout: 10000 
     });
 
-    console.log("Midtrans Response Success:", safeOrderId);
+    console.log("Midtrans Response Success:", uniqueId);
     res.json(response.data);
   } catch (error: any) {
-    if (axios.isAxiosError(error)) {
-      const midtransError = error.response?.data;
-      console.error("Midtrans API Rejected Data:", JSON.stringify(midtransError));
-      
-      return res.status(error.response?.status || 500).json({
-        error: "Ditolak dari Midtrans API",
-        message: midtransError?.message || midtransError?.status_message || error.message,
-        details: midtransError,
-        sent_payload_summary: `Amount: ${Math.floor(Number(amount))}`
-      });
-    }
+    const midtransError = error.response?.data;
+    console.error("Midtrans Error Catch:", JSON.stringify(midtransError || error.message));
     
-    console.error("Fatal System Error:", error.message);
-    res.status(500).json({ error: "Internal Server Error", message: error.message });
+    res.status(error.response?.status || 500).json({
+      error: "Gagal dari API Midtrans",
+      message: midtransError?.message || midtransError?.status_message || error.message,
+      details: midtransError
+    });
   }
 });
 
