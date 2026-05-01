@@ -92,86 +92,55 @@ export default function Checkout() {
       if (selectedMethod === 'midtrans') {
         try {
           if (!midtransConfig?.client_key || !midtransConfig?.server_key) {
-            throw new Error("Konfigurasi Midtrans (Server/Client Key) belum lengkap di menu Admin.");
+            throw new Error("Konfigurasi Midtrans belum lengkap di menu Admin.");
           }
 
-          // Check if snap is loaded
-          // @ts-ignore
-          if (!window.snap) {
-            throw new Error("Snap.js belum dimuat. Silakan muat ulang halaman.");
-          }
-
-          // Force a unique ID for Midtrans to avoid duplicate order ID errors if retrying
-          const uniqueMidtransId = `${orderId}-${Math.floor(Math.random() * 1000)}`;
+          // Force a timeout for the request to avoid hanging
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
 
           const response = await axios.post('/api/payments/midtrans/token', {
-            order_id: uniqueMidtransId,
+            order_id: orderId,
             amount: product.price,
             customer_details: {
-              first_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Buyer',
-              email: user.email,
-            },
-            item_details: [{
-              id: product.id,
-              price: Math.floor(product.price), // Ensure integer
-              quantity: 1,
-              name: product.name.substring(0, 50) // Max 50 chars
-            }]
+              first_name: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Customer',
+              email: user?.email,
+            }
+          }, { 
+            signal: controller.signal 
           });
+
+          clearTimeout(timeoutId);
 
           if (response.data.token) {
             // @ts-ignore
+            if (!window.snap) {
+              throw new Error("Midtrans Snap.js belum termuat sempurna. Silakan refresh.");
+            }
+            // @ts-ignore
             window.snap.pay(response.data.token, {
-              onSuccess: (result: any) => {
-                toast.success("Pembayaran Berhasil!");
-                navigate('/dashboard/purchases');
-              },
-              onPending: (result: any) => {
-                toast.info("Menunggu pembayaran.");
-                navigate('/dashboard/purchases');
-              },
-              onError: (result: any) => {
-                console.error("Midtrans Error:", result);
-                toast.error("Pembayaran ditolak atau gagal. Silakan coba metode lain.");
-              },
-              onClose: () => {
-                toast.error("Jendela pembayaran ditutup.");
-              }
+              onSuccess: () => navigate('/dashboard/purchases'),
+              onPending: () => navigate('/dashboard/purchases'),
+              onError: () => toast.error("Pembayaran gagal."),
+              onClose: () => toast.info("Jendela pembayaran ditutup.")
             });
           } else {
-            console.error("Midtrans server error payload:", response.data);
-            const errorDetail = response.data.message || response.data.details?.status_message || response.data.error;
-            throw new Error(errorDetail || "Gagal mendapatkan token transaksi.");
+            throw new Error(response.data.message || "Gagal mendapatkan token.");
           }
         } catch (err: any) {
-          console.error("Midtrans Payment Details Error:", err);
-          let errMsg = "Gagal menghubungi gateway pembayaran.";
-          
-          if (err.response?.data) {
-            const data = err.response.data;
-            // Robust parsing of nested error messages
-            const extractMsg = (obj: any): string => {
-              if (typeof obj === 'string') return obj;
-              if (obj?.status_message) return obj.status_message;
-              if (obj?.message) return typeof obj.message === 'string' ? obj.message : JSON.stringify(obj.message);
-              if (obj?.error_messages?.[0]) return obj.error_messages[0];
-              if (obj?.error) return typeof obj.error === 'string' ? obj.error : JSON.stringify(obj.error);
-              return JSON.stringify(obj);
-            };
-
-            if (data.details) {
-              errMsg = extractMsg(data.details);
-            } else {
-              errMsg = extractMsg(data);
-            }
-          } else if (err.message) {
-            errMsg = err.message;
+          let errMsg = "Terjadi kesalahan koneksi.";
+          if (err.name === 'AbortError') {
+            errMsg = "Server terlalu lama merespon (Timed Out). Cek koneksi Anda.";
+          } else if (err.response?.data?.message) {
+            errMsg = err.response.data.message;
           }
           
-          toast.error(`Midtrans Error: ${errMsg}`, {
-            description: "Pastikan Server Key di Admin > Settings sudah benar. Jika tetap error, cek console log server untuk detail teknis.",
-            duration: 10000
+          toast.error(`Kesalahan: ${errMsg}`, {
+            description: "Pastikan Server Key di Admin > Settings sudah benar. IP Whitelist di Midtrans wajib KOSONG.",
+            duration: 5000
           });
+        } finally {
+          setPaymentLoading(false);
         }
         return;
       }
