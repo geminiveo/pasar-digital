@@ -17,9 +17,38 @@ export default function Checkout() {
   const [loading, setLoading] = useState(true);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
+  const [currentOrderSupabaseId, setCurrentOrderSupabaseId] = useState<string | null>(null);
   const [selectedMethod, setSelectedMethod] = useState('qris');
   const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
+
+  // Realtime listener for order status change (Auto-redirect)
+  useEffect(() => {
+    if (!currentOrderSupabaseId) return;
+
+    const channel = supabase
+      .channel('checkout-order-status')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'orders',
+          filter: `id=eq.${currentOrderSupabaseId}`,
+        },
+        (payload) => {
+          if (payload.new.status === 'completed') {
+            toast.success("Pembayaran Berhasil Dikonfirmasi!");
+            setTimeout(() => navigate('/dashboard/orders'), 1500);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentOrderSupabaseId, navigate]);
 
   const [midtransConfig, setMidtransConfig] = useState<any>(null);
   const [pakasirConfig, setPakasirConfig] = useState<any>(null);
@@ -95,6 +124,7 @@ export default function Checkout() {
         .single();
 
       if (error) throw error;
+      setCurrentOrderSupabaseId(order.id);
 
       // Handle Midtrans
       if (selectedMethod === 'midtrans') {
@@ -127,8 +157,8 @@ export default function Checkout() {
             }
             // @ts-ignore
             window.snap.pay(response.data.token, {
-              onSuccess: () => navigate('/dashboard/purchases'),
-              onPending: () => navigate('/dashboard/purchases'),
+              onSuccess: () => navigate('/dashboard/orders'),
+              onPending: () => navigate('/dashboard/orders'),
               onError: () => toast.error("Pembayaran gagal."),
               onClose: () => toast.info("Jendela pembayaran ditutup.")
             });
