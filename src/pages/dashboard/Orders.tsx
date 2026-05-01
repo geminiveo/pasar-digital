@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, ShoppingBag, Download, Clock, ExternalLink, CheckCircle2, XCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Order, Profile } from '../../types';
+import { toast } from 'sonner';
 
 export default function Orders({ profile }: { profile: Profile }) {
   const [orders, setOrders] = useState<any[]>([]);
@@ -99,7 +100,17 @@ export default function Orders({ profile }: { profile: Profile }) {
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2 text-zinc-400">
                         {order.status === 'completed' && (
-                          <button className="p-2 hover:bg-brand-primary/10 hover:text-brand-primary rounded-lg transition-all" title="Unduh File">
+                          <button 
+                            onClick={() => {
+                              if (order.product?.file_url) {
+                                window.open(order.product.file_url, '_blank');
+                              } else {
+                                toast.error("File produk tidak tersedia.");
+                              }
+                            }}
+                            className="p-2 hover:bg-brand-primary/10 hover:text-brand-primary rounded-lg transition-all" 
+                            title="Unduh File"
+                          >
                             <Download className="w-4 h-4" />
                           </button>
                         )}
