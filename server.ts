@@ -222,36 +222,53 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       ? 'https://app.sandbox.midtrans.com/snap/v1/transactions' 
       : 'https://app.midtrans.com/snap/v1/transactions';
 
-    // 4. Setup Payload (Paling minimalis agar tidak ditolak Midtrans)
+    // 4. Setup Payload (Sangat ketat: total item HARUS sama dengan gross_amount)
     const totalAmount = Math.max(100, Math.floor(Number(amount)));
+    // Gunakan prefix INV untuk menghindari bentrok dengan testing sebelumnya
+    const uniqueId = `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     
-    // Gunakan prefix yang unik setiap request
-    const uniqueId = `PD-${Date.now()}-${Math.floor(Math.random() * 100)}`;
+    // Pastikan item_details bersih dan harga satuan dikali quantity sama dengan gross_amount
+    const validatedItems = (item_details || []).map((it: any) => ({
+      id: String(it.id || 'item').substring(0, 50),
+      price: Math.floor(Number(it.price)),
+      quantity: Math.max(1, Math.floor(Number(it.quantity || 1))),
+      name: String(it.name || 'Produk').replace(/[^\x20-\x7E]/g, '').substring(0, 50)
+    }));
+
+    // Hitung ulang total dari items
+    const itemsTotal = validatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
     const parameter: any = {
       transaction_details: {
         order_id: uniqueId,
-        gross_amount: totalAmount
+        gross_amount: itemsTotal > 0 ? itemsTotal : totalAmount
       },
-      item_details: (item_details || []).map((it: any) => ({
-        id: String(it.id || 'item').substring(0, 50),
-        price: Math.floor(Number(it.price || amount)),
-        quantity: 1,
-        name: String(it.name || 'Produk').substring(0, 50)
-      })),
       credit_card: {
         secure: true
       }
     };
 
-    if (customer_details?.email) {
+    // Sertakan item_details HANYA jika jumlah harganya pas dengan gross_amount
+    if (itemsTotal > 0 && itemsTotal === totalAmount) {
+      parameter.item_details = validatedItems;
+    } else {
+      // Jika tidak pas, gunakan 1 item dummy sebagai representasi total agar tidak error 500
+      parameter.item_details = [{
+        id: 'total',
+        price: totalAmount,
+        quantity: 1,
+        name: 'Total Pembelian'
+      }];
+    }
+
+    if (customer_details?.email && customer_details.email.includes('@')) {
       parameter.customer_details = {
-        first_name: String(customer_details.first_name || 'Buyer').substring(0, 20),
+        first_name: String(customer_details.first_name || 'Buyer').replace(/[^\x20-\x7E]/g, '').substring(0, 20),
         email: String(customer_details.email)
       };
     }
 
-    console.log("Midtrans Payload:", JSON.stringify(parameter));
+    console.log("Midtrans Payload Final:", JSON.stringify(parameter));
     
     const response = await axios.post(midtransUrl, parameter, {
       headers: {
@@ -259,7 +276,7 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': authHeader
       },
-      timeout: 10000 
+      timeout: 15000 
     });
 
     console.log("Midtrans Response Success:", uniqueId);
@@ -268,8 +285,17 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
     const midtransError = error.response?.data;
     console.error("Midtrans Error Catch:", JSON.stringify(midtransError || error.message));
     
+    // Deteksi khusus jika Midtrans memberikan Error 500
+    if (error.response?.status === 500) {
+      return res.status(500).json({
+        error: "Midtrans Server Error (500)",
+        message: "Midtrans menolak transaksi ini. Periksa IP Whitelist di Dashboard Midtrans atau pastikan Server Key benar.",
+        details: midtransError
+      });
+    }
+
     res.status(error.response?.status || 500).json({
-      error: "Gagal dari API Midtrans",
+      error: "Gagal menghubungkan ke Midtrans",
       message: midtransError?.message || midtransError?.status_message || error.message,
       details: midtransError
     });
