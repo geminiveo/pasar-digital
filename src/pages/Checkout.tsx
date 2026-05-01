@@ -22,6 +22,7 @@ export default function Checkout() {
   const navigate = useNavigate();
 
   const [midtransConfig, setMidtransConfig] = useState<any>(null);
+  const [pakasirConfig, setPakasirConfig] = useState<any>(null);
 
   useEffect(() => {
     async function init() {
@@ -41,8 +42,15 @@ export default function Checkout() {
       
       if (data) setProduct(data);
 
-      const { data: mConfig } = await supabase.from('system_settings').select('config').eq('id', 'midtrans_config').single();
-      if (mConfig) setMidtransConfig(mConfig.config);
+      // Fetch all payment configs
+      const { data: settings } = await supabase.from('system_settings').select('*');
+      const settingsMap = settings?.reduce((acc: any, curr: any) => {
+        acc[curr.id] = curr.config;
+        return acc;
+      }, {});
+
+      if (settingsMap?.midtrans_config) setMidtransConfig(settingsMap.midtrans_config);
+      if (settingsMap?.pakasir_config) setPakasirConfig(settingsMap.pakasir_config);
 
       setLoading(false);
     }
@@ -165,12 +173,33 @@ export default function Checkout() {
     }
   };
 
-  const paymentMethods = [
-    { id: 'midtrans', name: 'Midtrans (Snap)', icon: <Smartphone />, desc: 'E-Wallet, VA, Card, etc', feeDesc: 'Lengkap' },
-    { id: 'qris', name: 'QRIS (All E-Wallet)', icon: <QrCode />, desc: 'OVO, Dana, GoPay, LinkAja', feeDesc: 'Fee 0.7%' },
-    { id: 'bri_va', name: 'BRI Virtual Account', icon: <CreditCard />, desc: 'Transfer Bank BRI', feeDesc: 'Fee Rp 1.000' },
-    { id: 'bni_va', name: 'BNI Virtual Account', icon: <CreditCard />, desc: 'Transfer Bank BNI', feeDesc: 'Fee Rp 1.000' },
+  const allPaymentMethods = [
+    { id: 'midtrans', name: 'Midtrans (Snap)', icon: <Smartphone />, desc: 'E-Wallet, VA, Card, etc', feeDesc: 'Lengkap', gateway: 'midtrans' },
+    { id: 'qris', name: 'QRIS (All E-Wallet)', icon: <QrCode />, desc: 'OVO, Dana, GoPay, LinkAja', feeDesc: 'Fee 0.7%', gateway: 'pakasir' },
+    { id: 'bni_va', name: 'BNI Virtual Account', icon: <CreditCard />, desc: 'Transfer Bank BNI', feeDesc: 'Fee Rp 1.000', gateway: 'pakasir' },
+    { id: 'bri_va', name: 'BRI Virtual Account', icon: <CreditCard />, desc: 'Transfer Bank BRI', feeDesc: 'Fee Rp 1.000', gateway: 'pakasir' },
+    { id: 'cimb_va', name: 'CIMB Niaga VA', icon: <CreditCard />, desc: 'Transfer Bank CIMB', feeDesc: 'Fee Rp 1.000', gateway: 'pakasir' },
+    { id: 'mandiri_va', name: 'Mandiri Bill', icon: <CreditCard />, desc: 'Mandiri Bill Payment', feeDesc: 'Fee Rp 1.000', gateway: 'pakasir' },
+    { id: 'permata_va', name: 'Permata VA', icon: <CreditCard />, desc: 'Transfer Bank Permata', feeDesc: 'Fee Rp 1.000', gateway: 'pakasir' },
   ];
+
+  const paymentMethods = allPaymentMethods.filter(m => {
+    if (m.gateway === 'midtrans') {
+      return midtransConfig?.active === true;
+    }
+    if (m.gateway === 'pakasir') {
+      // Check if general Pakasir is active AND this specific method is enabled
+      return pakasirConfig?.active === true && pakasirConfig?.enabled_methods?.[m.id] === true;
+    }
+    return false;
+  });
+
+  // Default to first available method if selected one is hidden
+  useEffect(() => {
+    if (paymentMethods.length > 0 && !paymentMethods.find(m => m.id === selectedMethod)) {
+      setSelectedMethod(paymentMethods[0].id);
+    }
+  }, [paymentMethods, selectedMethod]);
 
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="w-8 h-8 border-4 border-brand-primary border-t-transparent rounded-full animate-spin"></div></div>;
 
@@ -293,32 +322,11 @@ export default function Checkout() {
           </div>
 
           <div className="space-y-4 w-full">
-            <button className="flex items-center justify-center gap-2 w-full py-2 bg-green-500/10 text-green-400 font-bold rounded-lg border border-green-500/20 text-sm">
+            <button className="flex items-center justify-center gap-2 w-full py-4 bg-green-500/10 text-green-400 font-black rounded-2xl border border-green-500/20 text-xs uppercase tracking-[0.2em]">
                <div className="w-2 h-2 rounded-full bg-green-400 animate-ping"></div>
                Menunggu Konfirmasi Sistem...
             </button>
-            <button 
-              onClick={async () => {
-                try {
-                  toast.loading("Mengirim simulasi webhook...");
-                  await axios.post('/api/webhooks/pakasir', {
-                    order_id: paymentData.order_id,
-                    amount: product.price,
-                    status: 'completed',
-                    project: 'Pasar Digital'
-                  });
-                  toast.dismiss();
-                  toast.success("Simulasi Berhasil! Pesanan diproses.");
-                  setTimeout(() => navigate('/dashboard/purchases'), 1500);
-                } catch (err) {
-                  toast.error("Gagal melakukan simulasi.");
-                }
-              }}
-              className="w-full py-2.5 bg-brand-primary text-white font-black rounded-lg text-xs uppercase tracking-widest hover:bg-brand-primary/80 transition-colors shadow-lg shadow-brand-primary/20"
-            >
-              Simulasi Pembayaran Berhasil
-            </button>
-            <p className="text-zinc-600 text-[10px] leading-relaxed italic">
+            <p className="text-zinc-600 text-[10px] leading-relaxed italic text-center">
               Setelah pembayaran berhasil, halaman ini akan otomatis dialihkan ke dashboard untuk mendapatkan file produk.
             </p>
           </div>
