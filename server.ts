@@ -3,64 +3,78 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
 import axios from "axios";
-import { createRequire } from "module";
-
-const require = createRequire(import.meta.url);
-const midtransClient = require('midtrans-client');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
+// API Health Check
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "ok",
+    env: {
+      supabase_url: !!process.env.VITE_SUPABASE_URL,
+      supabase_role_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY
+    }
+  });
+});
+
 // Helper to complete order
 async function completeOrder(orderIdExternal: string, supabaseAdmin: any) {
-  // 1. Get Platform Fee from Settings
-  const { data: settings } = await supabaseAdmin
-    .from('system_settings')
-    .select('config')
-    .eq('id', 'site_config')
-    .single();
-  
-  const platformFeePercent = settings?.config?.platform_fee || 10;
-  const commission = platformFeePercent / 100;
+  try {
+    // 1. Get Platform Fee from Settings
+    const { data: settings, error: settingsError } = await supabaseAdmin
+      .from('system_settings')
+      .select('config')
+      .eq('id', 'site_config')
+      .single();
+    
+    if (settingsError) console.error("Error fetching site_config:", settingsError);
+    
+    const platformFeePercent = settings?.config?.platform_fee || 10;
+    const commission = platformFeePercent / 100;
 
-  // 2. Update Order Status (only if currently pending)
-  const { data: order, error: orderError } = await supabaseAdmin
-    .from('orders')
-    .update({ status: 'completed' })
-    .eq('order_id_external', orderIdExternal)
-    .eq('status', 'pending')
-    .select('*, buyer_id, amount, product_id')
-    .single();
+    // 2. Update Order Status (only if currently pending)
+    const { data: order, error: orderError } = await supabaseAdmin
+      .from('orders')
+      .update({ status: 'completed' })
+      .eq('order_id_external', orderIdExternal)
+      .eq('status', 'pending')
+      .select('*, buyer_id, amount, product_id')
+      .single();
 
-  if (orderError) {
-    console.log(`Order ${orderIdExternal} already processed or not found.`);
+    if (orderError) {
+      console.log(`Order ${orderIdExternal} already processed or not found:`, orderError.message);
+      return null;
+    }
+
+    // 3. Add Balance to Vendor
+    const vendorEarnings = order.amount * (1 - commission);
+
+    const { data: product } = await supabaseAdmin
+      .from('products')
+      .select('vendor_id')
+      .eq('id', order.product_id)
+      .single();
+
+    if (product) {
+      await supabaseAdmin.rpc('increment_balance', { 
+        user_id: product.vendor_id, 
+        amount: vendorEarnings 
+      });
+    }
+
+    // 4. Increment Sales Count
+    await supabaseAdmin.rpc('increment_sales', { 
+      prod_id: order.product_id 
+    });
+
+    return order;
+  } catch (err) {
+    console.error("Order completion failed internally:", err);
     return null;
   }
-
-  // 3. Add Balance to Vendor
-  const vendorEarnings = order.amount * (1 - commission);
-
-  const { data: product } = await supabaseAdmin
-    .from('products')
-    .select('vendor_id')
-    .eq('id', order.product_id)
-    .single();
-
-  if (product) {
-    await supabaseAdmin.rpc('increment_balance', { 
-      user_id: product.vendor_id, 
-      amount: vendorEarnings 
-    });
-  }
-
-  // 4. Increment Sales Count
-  await supabaseAdmin.rpc('increment_sales', { 
-    prod_id: order.product_id 
-  });
-
-  return order;
 }
 
 // API Route: Pakasir Webhook
@@ -172,33 +186,18 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
       .eq('id', 'midtrans_config')
       .single();
 
-    if (!settings?.config?.server_key || !settings?.config?.client_key) {
-      return res.status(500).json({ error: "Midtrans configuration (Server/Client Key) is missing in the database admin settings." });
+    if (!settings?.config?.server_key) {
+      return res.status(500).json({ error: "Midtrans Server Key is missing in admin settings." });
     }
 
-    if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error("Missing Supabase Environment Variables in Vercel/Production");
-      return res.status(500).json({ error: "Server error: Missing environment variables on host." });
-    }
+    const serverKey = settings.config.server_key.trim();
+    const isProduction = !settings.config.is_sandbox;
+    
+    const midtransUrl = isProduction 
+      ? 'https://app.midtrans.com/snap/v1/transactions' 
+      : 'https://app.sandbox.midtrans.com/snap/v1/transactions';
 
-    // Initialize Midtrans Snap
-    let snap;
-    try {
-      const serverKey = settings.config.server_key.trim();
-      const clientKey = settings.config.client_key.trim();
-      const isProduction = !settings.config.is_sandbox;
-
-      console.log("Initializing Midtrans Snap:", { isProduction });
-      
-      snap = new midtransClient.Snap({
-        isProduction,
-        serverKey,
-        clientKey
-      });
-    } catch (err: any) {
-      console.error("Failed to initialize midtrans-client:", err);
-      return res.status(500).json({ error: "Gagal inisialisasi library Midtrans: " + err.message });
-    }
+    const authHeader = Buffer.from(serverKey + ':').toString('base64');
 
     const parameter = {
       transaction_details: {
@@ -209,24 +208,42 @@ app.post("/api/payments/midtrans/token", async (req, res) => {
         secure: true
       },
       customer_details,
-      item_details
+      item_details: item_details.map((item: any) => ({
+        ...item,
+        price: Math.floor(item.price)
+      }))
     };
 
-    console.log("Creating Midtrans transaction with parameters:", JSON.stringify(parameter, null, 2));
+    console.log("Midtrans Request URL:", midtransUrl);
+    console.log("Midtrans Request Body:", JSON.stringify(parameter, null, 2));
 
-    const transaction = await snap.createTransaction(parameter);
-    console.log("Midtrans Transaction Created:", transaction);
-    res.json(transaction);
+    const response = await axios.post(midtransUrl, parameter, {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${authHeader}`
+      },
+      validateStatus: () => true // Handle all status codes
+    });
+
+    console.log("Midtrans API Response Status:", response.status);
+    console.log("Midtrans API Response Body:", JSON.stringify(response.data, null, 2));
+
+    if (response.status >= 400) {
+      return res.status(response.status).json({
+        error: "Midtrans API Error",
+        status: response.status,
+        details: response.data
+      });
+    }
+
+    res.json(response.data);
   } catch (error: any) {
-    console.error("Midtrans API Error Details:", error);
-    // Determine if error is from Midtrans API response or local execution
-    const responseData = error.ApiResponse || (error.response && error.response.data) || null;
-    
+    console.error("Midtrans Server Error:", error.message);
     res.status(500).json({ 
-      error: "Midtrans API Error",
-      message: error.message || "Gagal membuat token pembayaran",
-      details: responseData || error.toString(),
-      code: error.code || (responseData && responseData.code) || "500"
+      error: "Internal Server Error",
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
