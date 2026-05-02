@@ -231,7 +231,27 @@ export default function ProductDetails() {
               <Link to={`/checkout/${product.id}`} className="btn-primary w-full py-4 text-center block text-lg font-black tracking-wide">
                 Beli Sekarang
               </Link>
-              <button className="w-full flex items-center justify-center gap-2 py-3.5 bg-surface-700 hover:bg-zinc-800 text-white rounded-xl font-bold transition-all border border-zinc-700 border-dashed">
+              <button 
+                onClick={() => {
+                  const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+                  if (cart.find((item: any) => item.id === product.id)) {
+                    toast.error("Produk sudah ada di keranjang");
+                    return;
+                  }
+                  cart.push({
+                    id: product.id,
+                    name: product.name,
+                    price: product.price,
+                    thumbnail_url: product.thumbnail_url,
+                    category: product.category,
+                    slug: product.slug
+                  });
+                  localStorage.setItem('cart', JSON.stringify(cart));
+                  toast.success("Berhasil ditambahkan ke keranjang!");
+                  window.dispatchEvent(new Event('cart_updated'));
+                }}
+                className="w-full flex items-center justify-center gap-2 py-3.5 bg-surface-700 hover:bg-zinc-800 text-white rounded-xl font-bold transition-all border border-zinc-700 border-dashed"
+              >
                 <ShoppingCart className="w-5 h-5" />
                 Tambah ke Keranjang
               </button>
