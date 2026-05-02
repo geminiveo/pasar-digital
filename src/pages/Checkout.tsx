@@ -26,8 +26,8 @@ export default function Checkout() {
   useEffect(() => {
     if (!currentOrderSupabaseId) return;
 
-    // Use a unique channel name to avoid "after subscribe" errors if useEffect runs twice
     const channelName = `order-status-${currentOrderSupabaseId}-${Math.floor(Math.random() * 1000000)}`;
+    console.log(`[Realtime] Subscribing to order: ${currentOrderSupabaseId}`);
     
     const channel = supabase
       .channel(channelName)
@@ -40,15 +40,27 @@ export default function Checkout() {
           filter: `id=eq.${currentOrderSupabaseId}`,
         },
         (payload) => {
+          console.log("[Realtime] Order Status Change Detected:", payload.new.status);
           if (payload.new.status === 'completed') {
-            setPaymentData(null);
+            // Success state handling
             setPaymentLoading(false);
-            toast.success("Pembayaran Berhasil Dikonfirmasi!");
-            setTimeout(() => navigate('/dashboard/orders'), 1500);
+            // Don't set paymentData to null immediately to avoid flicker, just show toast and navigate
+            toast.success("Pembayaran Berhasil Dikonfirmasi!", {
+              description: "Sistem mendeteksi dana masuk. Mengalihkan Anda...",
+              duration: 3000
+            });
+            
+            // Redirect after a short delay
+            setTimeout(() => {
+              setPaymentData(null);
+              navigate('/dashboard/orders');
+            }, 2000);
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`[Realtime] Subscription status: ${status}`);
+      });
 
     return () => {
       supabase.removeChannel(channel);
