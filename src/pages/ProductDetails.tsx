@@ -23,7 +23,27 @@ export default function ProductDetails() {
         .eq('slug', slug)
         .single();
 
-      if (data) setProduct(data);
+      if (data) {
+        // Fetch Ratings
+        const { data: reviewsData } = await supabase
+          .from('reviews')
+          .select('rating, comment, created_at, user:profiles(full_name, avatar_url)')
+          .eq('product_id', data.id);
+        
+        let avgRating = 0;
+        let reviewCount = 0;
+        if (reviewsData && reviewsData.length > 0) {
+          reviewCount = reviewsData.length;
+          avgRating = reviewsData.reduce((sum, r) => sum + r.rating, 0) / reviewCount;
+        }
+
+        setProduct({ 
+          ...data, 
+          avg_rating: avgRating, 
+          review_count: reviewCount,
+          reviews: reviewsData || []
+        });
+      }
       setLoading(false);
     }
     fetchProduct();
@@ -31,6 +51,8 @@ export default function ProductDetails() {
 
   if (loading) return <div className="flex items-center justify-center h-screen"><div className="w-10 h-10 border-4 border-brand-primary border-t-transparent rounded-full animate-spin"></div></div>;
   if (!product) return <div className="text-center py-20 text-zinc-500">Produk tidak ditemukan.</div>;
+
+  const metadata = product.metadata || {};
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 pb-20">
@@ -59,64 +81,132 @@ export default function ProductDetails() {
               <span className="px-3 py-1 bg-brand-primary/10 text-brand-primary text-xs font-bold rounded-lg border border-brand-primary/20 uppercase tracking-wider">{product.category}</span>
               <span className="px-3 py-1 bg-surface-700 text-zinc-400 text-xs font-bold rounded-lg border border-zinc-700 uppercase tracking-wider flex items-center gap-1">
                 <Star className="w-3 h-3 text-yellow-400" />
-                4.8 / 5.0 (24 Reviews)
+                {product.avg_rating > 0 ? `${product.avg_rating.toFixed(1)} / 5.0` : 'No Ratings'} ({product.review_count || 0} Reviews)
               </span>
+              {metadata.demo_link && (
+                <a 
+                  href={metadata.demo_link} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="px-3 py-1 bg-blue-500/10 text-blue-400 text-xs font-bold rounded-lg border border-blue-500/20 uppercase tracking-wider flex items-center gap-1 hover:bg-blue-500/20 transition-all"
+                >
+                  <Globe className="w-3 h-3" />
+                  Live Demo
+                </a>
+              )}
             </div>
 
             <h1 className="text-4xl font-black text-white mb-4">{product.name}</h1>
-            <p className="text-zinc-400 leading-relaxed text-lg whitespace-pre-wrap mb-8">
-              {product.description || 'Deskripsi produk ini belum ditambahkan oleh vendor. Namun produk digital ini dijamin berkualitas tinggi dan orisinal.'}
-            </p>
+            <div className="text-zinc-400 leading-relaxed text-lg whitespace-pre-wrap mb-8 prose prose-invert max-w-none">
+              {product.description || 'Deskripsi produk ini belum ditambahkan oleh vendor.'}
+            </div>
 
-            {/* Features Info */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 py-8 border-y border-zinc-800">
-              {[
-                { label: 'Terakhir Update', val: '20 Sep 2024', icon: <Clock /> },
-                { label: 'Lisensi', val: 'Regular License', icon: <ShieldCheck /> },
-                { label: 'Tipe File', val: 'PHP, JS, SQL', icon: <Tag /> },
-                { label: 'Dokumentasi', val: 'Tersedia', icon: <Layout /> },
-                { label: 'Support', val: '6 Bulan', icon: <MessageSquare /> },
-                { label: 'Format', val: 'ZIP File', icon: <Download /> },
-              ].map((item, i) => (
-                <div key={i} className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2 text-zinc-500">
-                    <span className="text-brand-primary">{item.icon}</span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider">{item.label}</span>
-                  </div>
-                  <span className="text-sm font-semibold text-white">{item.val}</span>
+            {/* Specifications Details */}
+            <div className="pt-8 border-t border-zinc-800 space-y-6">
+              <h3 className="text-lg font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <Layout className="w-5 h-5 text-brand-primary" />
+                Spesifikasi Teknis
+              </h3>
+              
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                {product.category === 'Source Code' && (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Framework</span>
+                      <span className="text-sm font-semibold text-white">{metadata.framework || 'N/A'}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">DB / Back End</span>
+                      <span className="text-sm font-semibold text-white">{metadata.db_backend || 'N/A'}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Deployment</span>
+                      <span className="text-sm font-semibold text-white">{metadata.cms_frontend || 'N/A'}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Support Vendor</span>
+                      <span className={`text-sm font-semibold ${metadata.support_enabled ? 'text-green-400' : 'text-zinc-500'}`}>
+                        {metadata.support_enabled ? `Aktif (${metadata.support_duration || '6 Bulan'})` : 'Tidak Tersedia'}
+                      </span>
+                    </div>
+                    {metadata.other_features && (
+                      <div className="col-span-2 flex flex-col gap-1">
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Fitur Utama</span>
+                        <span className="text-sm font-semibold text-white">{metadata.other_features}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {(product.category === 'Theme' || product.category === 'Plugin' || product.category === 'Mobile Apps') && (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Versi</span>
+                      <span className="text-sm font-semibold text-white">{metadata.version || '1.0.0'}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Kompatibilitas</span>
+                      <span className="text-sm font-semibold text-white">{metadata.compatibility || 'N/A'}</span>
+                    </div>
+                  </>
+                )}
+
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Terakhir Update</span>
+                  <span className="text-sm font-semibold text-white">{new Date(product.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                 </div>
-              ))}
+                <div className="flex flex-col gap-1">
+                   <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Lisensi</span>
+                   <span className="text-sm font-semibold text-white">Regular License</span>
+                </div>
+              </div>
             </div>
           </motion.div>
 
-          {/* User Reviews Placeholder */}
+          {/* User Reviews */}
           <div className="glass-card">
             <div className="flex items-center justify-between mb-8">
-              <h3 className="text-xl font-bold">Reviews</h3>
-              <button className="text-brand-primary text-sm font-bold flex items-center gap-2">Tulis Review <ChevronRight className="w-4 h-4" /></button>
+              <h3 className="text-xl font-bold">Reviews ({product.review_count || 0})</h3>
             </div>
-            <div className="space-y-8">
-              {[1, 2].map((i) => (
-                <div key={i} className="flex gap-4">
-                  <div className="w-10 h-10 rounded-full bg-surface-700"></div>
-                  <div className="flex-grow">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-bold text-white text-sm">Customer #{i}</span>
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4, 5].map(s => <Star key={s} className="w-3 h-3 text-yellow-400 fill-yellow-400" />)}
-                      </div>
+            
+            {product.reviews && product.reviews.length > 0 ? (
+              <div className="space-y-8">
+                {product.reviews.map((review: any, i: number) => (
+                  <div key={i} className="flex gap-4">
+                    <div className="w-10 h-10 rounded-full bg-surface-700 flex items-center justify-center overflow-hidden border border-zinc-700">
+                      {review.user?.avatar_url ? (
+                        <img src={review.user.avatar_url} className="w-full h-full object-cover" alt="" />
+                      ) : (
+                         <Star className="w-5 h-5 text-zinc-600" />
+                      )}
                     </div>
-                    <p className="text-zinc-500 text-sm">Produknya sangat membantu, fiturnya lengkap dan supportnya cepat. Sangat direkomendasikan!</p>
+                    <div className="flex-grow">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-bold text-white text-sm">{review.user?.full_name || 'Anonymous'}</span>
+                        <div className="flex gap-0.5">
+                          {[1, 2, 3, 4, 5].map(s => (
+                            <Star key={s} className={`w-3 h-3 ${s <= review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-zinc-700'}`} />
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-zinc-500 text-sm">{review.comment}</p>
+                      <p className="text-[10px] text-zinc-600 mt-2">{new Date(review.created_at).toLocaleDateString('id-ID')}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-10">
+                <Star className="w-12 h-12 text-zinc-800 mx-auto mb-4" />
+                <p className="text-zinc-500">Belum ada review untuk produk ini.</p>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Right: Checkout Sidebar */}
         <div className="space-y-6">
-          <div className="glass-card sticky top-32 border-brand-primary/20 shadow-2xl shadow-brand-primary/5">
+          <div className="glass-card lg:sticky lg:top-32 border-brand-primary/20 shadow-2xl shadow-brand-primary/5">
             <div className="mb-6">
               <span className="text-zinc-500 text-xs font-black uppercase tracking-[0.2em] mb-1 block">Harga</span>
               <div className="text-4xl font-black text-white">Rp {product.price?.toLocaleString('id-ID')}</div>
