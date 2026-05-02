@@ -14,6 +14,8 @@ export type Profile = {
   store_name?: string | null;
   registration_status?: 'none' | 'pending' | 'approved' | 'rejected';
   rejection_reason?: string | null;
+  address?: string | null;
+  whatsapp?: string | null;
   created_at: string;
 };
 
