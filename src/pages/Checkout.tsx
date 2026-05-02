@@ -22,13 +22,12 @@ export default function Checkout() {
   const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
 
-  // Realtime listener for order status change (Auto-redirect)
+  // Auto-redirect mechanism (Realtime + Polling fallback)
   useEffect(() => {
     if (!currentOrderSupabaseId) return;
 
+    // 1. Realtime Listener
     const channelName = `order-status-${currentOrderSupabaseId}-${Math.floor(Math.random() * 1000000)}`;
-    console.log(`[Realtime] Subscribing to order: ${currentOrderSupabaseId}`);
-    
     const channel = supabase
       .channel(channelName)
       .on(
@@ -40,32 +39,47 @@ export default function Checkout() {
           filter: `id=eq.${currentOrderSupabaseId}`,
         },
         (payload) => {
-          console.log("[Realtime] Order Status Change Detected:", payload.new.status);
           if (payload.new.status === 'completed') {
-            // Success state handling
-            setPaymentLoading(false);
-            // Don't set paymentData to null immediately to avoid flicker, just show toast and navigate
-            toast.success("Pembayaran Berhasil Dikonfirmasi!", {
-              description: "Sistem mendeteksi dana masuk. Mengalihkan Anda...",
-              duration: 3000
-            });
-            
-            // Redirect after a short delay
-            setTimeout(() => {
-              setPaymentData(null);
-              navigate('/dashboard/orders');
-            }, 2000);
+            handleSuccessfulPayment();
           }
         }
       )
-      .subscribe((status) => {
-        console.log(`[Realtime] Subscription status: ${status}`);
-      });
+      .subscribe();
+
+    // 2. Polling Fallback (Every 3 seconds)
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from('orders')
+        .select('status')
+        .eq('id', currentOrderSupabaseId)
+        .single();
+      
+      if (data?.status === 'completed') {
+        handleSuccessfulPayment();
+      }
+    }, 3000);
+
+    const handleSuccessfulPayment = () => {
+      // Clear interval and subscription immediately
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+      
+      if (paymentLoading || paymentData) {
+        setPaymentLoading(false);
+        setPaymentData(null);
+        toast.success("Pembayaran Terdeteksi!", {
+          description: "Dana telah dikonfirmasi. Mengalihkan Anda...",
+          duration: 3000
+        });
+        navigate('/dashboard/orders');
+      }
+    };
 
     return () => {
+      clearInterval(interval);
       supabase.removeChannel(channel);
     };
-  }, [currentOrderSupabaseId, navigate]);
+  }, [currentOrderSupabaseId, navigate, paymentData, paymentLoading]);
 
   const [midtransConfig, setMidtransConfig] = useState<any>(null);
   const [pakasirConfig, setPakasirConfig] = useState<any>(null);
