@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShoppingCart, Filter, Search, ArrowUpDown, ChevronDown, Package, Star, Download } from 'lucide-react';
+import { ShoppingCart, Filter, Search, ArrowUpDown, ChevronDown, Package, Star, Download, Eye } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -186,29 +186,34 @@ export default function Shop() {
                         <span className="text-[8px] md:text-[9px] uppercase font-bold text-zinc-600 block tracking-wider">Harga</span>
                         <span className="font-black text-sm md:text-xl text-white">Rp {p.price.toLocaleString('id-ID')}</span>
                     </div>
-                    <button 
-                      onClick={() => {
-                        const cart = JSON.parse(localStorage.getItem('cart') || '[]');
-                        if (cart.find((item: any) => item.id === p.id)) {
-                          toast.error("Produk sudah ada di keranjang");
-                          return;
-                        }
-                        cart.push({
-                          id: p.id,
-                          name: p.name,
-                          price: p.price,
-                          thumbnail_url: p.thumbnail_url,
-                          category: p.category,
-                          slug: p.slug
-                        });
-                        localStorage.setItem('cart', JSON.stringify(cart));
-                        toast.success("Berhasil ditambahkan ke keranjang!");
-                        window.dispatchEvent(new Event('cart_updated'));
-                      }}
-                      className="w-8 h-8 md:w-12 md:h-12 bg-brand-primary text-white rounded-lg md:rounded-xl flex items-center justify-center hover:bg-brand-secondary transition-all shadow-lg shadow-brand-primary/20"
-                    >
-                        <ShoppingCart className="w-4 h-4 md:w-5 md:h-5" />
-                    </button>
+                    <div className="flex gap-2">
+                        <Link to={`/product/${p.slug}`} className="w-8 h-8 md:w-12 md:h-12 bg-surface-700 text-zinc-400 rounded-lg md:rounded-xl flex items-center justify-center hover:bg-zinc-600 hover:text-white transition-all border border-zinc-700">
+                            <Eye className="w-4 h-4 md:w-5 md:h-5" />
+                        </Link>
+                        <button 
+                          onClick={() => {
+                            const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+                            if (cart.find((item: any) => item.id === p.id)) {
+                              toast.error("Produk sudah ada di keranjang");
+                              return;
+                            }
+                            cart.push({
+                              id: p.id,
+                              name: p.name,
+                              price: p.price,
+                              thumbnail_url: p.thumbnail_url,
+                              category: p.category,
+                              slug: p.slug
+                            });
+                            localStorage.setItem('cart', JSON.stringify(cart));
+                            toast.success("Berhasil ditambahkan ke keranjang!");
+                            window.dispatchEvent(new Event('cart_updated'));
+                          }}
+                          className="w-8 h-8 md:w-12 md:h-12 bg-brand-primary text-white rounded-lg md:rounded-xl flex items-center justify-center hover:bg-brand-secondary transition-all shadow-lg shadow-brand-primary/20"
+                        >
+                            <ShoppingCart className="w-4 h-4 md:w-5 md:h-5" />
+                        </button>
+                    </div>
                   </div>
                </div>
             </motion.div>
