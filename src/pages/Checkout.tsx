@@ -71,7 +71,7 @@ export default function Checkout() {
           description: "Dana telah dikonfirmasi. Mengalihkan Anda...",
           duration: 3000
         });
-        navigate('/dashboard/orders');
+        navigate('/dashboard/purchases');
       }
     };
 
@@ -188,8 +188,8 @@ export default function Checkout() {
             }
             // @ts-ignore
             window.snap.pay(response.data.token, {
-              onSuccess: () => navigate('/dashboard/orders'),
-              onPending: () => navigate('/dashboard/orders'),
+              onSuccess: () => navigate('/dashboard/purchases'),
+              onPending: () => navigate('/dashboard/purchases'),
               onError: () => toast.error("Pembayaran gagal."),
               onClose: () => toast.info("Jendela pembayaran ditutup.")
             });
