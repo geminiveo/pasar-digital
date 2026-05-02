@@ -29,6 +29,9 @@ export type Product = {
   download_url: string;
   is_active: boolean;
   sales_count: number;
+  metadata?: any;
+  avg_rating?: number;
+  review_count?: number;
   created_at: string;
   vendor?: Profile;
 };
