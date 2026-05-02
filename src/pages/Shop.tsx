@@ -24,7 +24,28 @@ export default function Shop() {
         .select('*, vendor:profiles(*)')
         .eq('is_active', true);
       
-      if (productsData) setProducts(productsData);
+      if (productsData) {
+        // Fetch Ratings for all products
+        const { data: allReviews } = await supabase
+          .from('reviews')
+          .select('product_id, rating');
+        
+        const productsWithRatings = productsData.map(p => {
+          const productReviews = allReviews?.filter(r => r.product_id === p.id) || [];
+          const reviewCount = productReviews.length;
+          const avgRating = reviewCount > 0 
+            ? productReviews.reduce((sum, r) => sum + r.rating, 0) / reviewCount 
+            : 0;
+          
+          return {
+            ...p,
+            avg_rating: avgRating,
+            review_count: reviewCount
+          };
+        });
+
+        setProducts(productsWithRatings);
+      }
 
       // Fetch Categories
       const { data: categoriesData } = await supabase
@@ -137,7 +158,13 @@ export default function Shop() {
                   <div className="flex items-center gap-2 md:gap-3">
                      <div className="flex items-center gap-1">
                         <Star className="w-2 md:w-3 h-2 md:h-3 text-yellow-400 fill-yellow-400" />
-                        <span className="text-[10px] md:text-xs text-zinc-300 font-bold">4.8</span>
+                        <span className="text-[10px] md:text-xs text-zinc-300 font-bold">
+                          {p.avg_rating && p.avg_rating > 0 ? p.avg_rating.toFixed(1) : 'New'}
+                        </span>
+                     </div>
+                     <div className="w-1 h-1 bg-zinc-700 rounded-full"></div>
+                     <div className="flex items-center gap-1 text-[10px] md:text-xs text-zinc-500 font-bold">
+                       {p.review_count || 0} Reviews
                      </div>
                      <div className="w-1 h-1 bg-zinc-700 rounded-full"></div>
                      <div className="flex items-center gap-1">
