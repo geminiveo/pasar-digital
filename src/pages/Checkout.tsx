@@ -25,9 +25,11 @@ export default function Checkout() {
   const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
 
+  const [isSuccess, setIsSuccess] = useState(false);
+
   // Auto-redirect mechanism (Realtime + Polling fallback)
   useEffect(() => {
-    if (!currentOrderSupabaseId) return;
+    if (!currentOrderSupabaseId || isSuccess) return;
 
     // 1. Realtime Listener
     const channelName = `order-status-${currentOrderSupabaseId}-${Math.floor(Math.random() * 1000000)}`;
@@ -68,7 +70,7 @@ export default function Checkout() {
       supabase.removeChannel(channel);
       
       setPaymentLoading(false);
-      setPaymentData(null);
+      setIsSuccess(true);
       
       if (isBatch) {
         localStorage.removeItem('cart');
@@ -77,17 +79,20 @@ export default function Checkout() {
       
       toast.success("Pembayaran Terdeteksi!", {
         description: "Dana telah dikonfirmasi. Mengalihkan Anda...",
-        duration: 3000
+        duration: 4000
       });
       
-      navigate('/dashboard/purchases');
+      // Delay redirect to allow user to see the success state
+      setTimeout(() => {
+        navigate('/dashboard/purchases');
+      }, 3000);
     };
 
     return () => {
       clearInterval(interval);
       supabase.removeChannel(channel);
     };
-  }, [currentOrderSupabaseId, navigate, paymentData, paymentLoading]);
+  }, [currentOrderSupabaseId, navigate, isSuccess]);
 
   const [midtransConfig, setMidtransConfig] = useState<any>(null);
   const [pakasirConfig, setPakasirConfig] = useState<any>(null);
@@ -320,7 +325,26 @@ export default function Checkout() {
         {isBatch ? 'Kembali ke Keranjang' : 'Kembali ke Produk'}
       </Link>
 
-      {!paymentData ? (
+      {isSuccess ? (
+        <motion.div 
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="max-w-md mx-auto glass-card flex flex-col items-center text-center p-12 border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.1)]"
+        >
+          <div className="w-20 h-20 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-6 animate-bounce">
+            <CheckCircle2 className="w-10 h-10" />
+          </div>
+          <h2 className="text-3xl font-black text-white mb-4 italic">Pembayaran <span className="text-green-500">Terdeteksi!</span></h2>
+          <p className="text-zinc-400 leading-relaxed mb-8">
+            Dana telah dikonfirmasi oleh sistem. Anda akan dialihkan ke dashboard pesanan dalam beberapa detik...
+          </p>
+          <div className="flex gap-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
+          </div>
+        </motion.div>
+      ) : !paymentData ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
           {/* Methods Selection */}
           <div className="space-y-6">
