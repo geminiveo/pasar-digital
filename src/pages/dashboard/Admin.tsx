@@ -821,6 +821,79 @@ export default function AdminView() {
             </div>
           </div>
 
+          <div className="glass-card">
+            <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-brand-primary" /> TriPay (Payment Gateway)
+            </h3>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-surface-700/50 rounded-xl border border-white/5">
+                <div>
+                  <p className="text-sm font-bold text-white">Status Gateway</p>
+                  <p className="text-[10px] text-zinc-500 uppercase font-black">Aktifkan TriPay</p>
+                </div>
+                <button 
+                  onClick={() => setData({ ...data, settings: { ...data.settings, tripay_config: { ...data.settings.tripay_config, active: !data.settings.tripay_config?.active }}})}
+                  className={`w-12 h-6 rounded-full transition-all relative ${data.settings?.tripay_config?.active ? 'bg-brand-primary' : 'bg-zinc-700'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${data.settings?.tripay_config?.active ? 'left-7' : 'left-1'}`} />
+                </button>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-zinc-500 uppercase">Merchant Code</label>
+                <input 
+                  type="text" 
+                  value={data.settings?.tripay_config?.merchant_code || ''} 
+                  onChange={(e) => setData({ ...data, settings: { ...data.settings, tripay_config: { ...data.settings.tripay_config, merchant_code: e.target.value }}})}
+                  className="w-full bg-surface-700 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-brand-primary font-mono" 
+                  placeholder="TXXXX"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-zinc-500 uppercase">API Key</label>
+                <input 
+                  type="text" 
+                  value={data.settings?.tripay_config?.api_key || ''} 
+                  onChange={(e) => setData({ ...data, settings: { ...data.settings, tripay_config: { ...data.settings.tripay_config, api_key: e.target.value }}})}
+                  className="w-full bg-surface-700 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-brand-primary font-mono" 
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-zinc-500 uppercase">Private Key</label>
+                <input 
+                  type="password" 
+                  value={data.settings?.tripay_config?.private_key || ''} 
+                  onChange={(e) => setData({ ...data, settings: { ...data.settings, tripay_config: { ...data.settings.tripay_config, private_key: e.target.value }}})}
+                  className="w-full bg-surface-700 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-brand-primary font-mono" 
+                />
+              </div>
+              <div className="p-3 bg-brand-primary/5 border border-brand-primary/20 rounded-xl">
+                <p className="text-[10px] font-black text-brand-primary uppercase mb-1">Webhook URL TriPay</p>
+                <code className="text-[10px] text-zinc-400 break-all">
+                  {window.location.origin}/api/webhooks/tripay
+                </code>
+                <p className="text-[9px] text-zinc-500 mt-2 italic leading-tight">
+                  * Daftarkan URL ini di Dashboard TriPay bagian Merchant Settings &gt; Callback URL.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 py-2">
+                <input 
+                  type="checkbox" 
+                  checked={!!data.settings?.tripay_config?.is_sandbox} 
+                  onChange={(e) => setData({ ...data, settings: { ...data.settings, tripay_config: { ...data.settings.tripay_config, is_sandbox: e.target.checked }}})}
+                  className="accent-brand-primary"
+                />
+                <label className="text-xs font-bold text-zinc-400">Sandbox Mode</label>
+              </div>
+              <button 
+                onClick={() => saveSettings('tripay_config', data.settings.tripay_config)}
+                className="btn-primary w-full mt-2"
+              >
+                Simpan TriPay Settings
+              </button>
+            </div>
+          </div>
+
           <div className="glass-card bg-red-500/5 border-red-500/20">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-red-500">
               <Database className="w-5 h-5" /> Maintenance & Cleanup
