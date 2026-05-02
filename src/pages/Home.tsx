@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { ArrowRight, Zap, ShieldCheck, Clock, Download, Star } from 'lucide-react';
+import { ArrowRight, Zap, ShieldCheck, Clock, Download, Star, ShoppingCart, Eye } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { toast } from 'sonner';
 
 export default function Home() {
   const [siteConfig, setSiteConfig] = useState<any>(null);
@@ -169,14 +170,42 @@ export default function Home() {
                 <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
                 <span>{p.avg_rating > 0 ? p.avg_rating.toFixed(1) : 'New'} ({p.review_count || 0})</span>
               </div>
-              <div className="mt-auto flex items-center justify-between">
+              <div className="mt-auto flex items-center justify-between gap-2">
                 <div>
                   <span className="text-zinc-500 text-[8px] md:text-[10px] uppercase block font-bold tracking-wider">Harga</span>
                   <span className="text-sm md:text-xl font-black text-white">Rp {p.price.toLocaleString('id-ID')}</span>
                 </div>
-                <Link to={`/checkout/${p.id}`} className="p-2 md:p-2.5 bg-brand-primary rounded-lg text-white hover:bg-brand-secondary transition-all shadow-lg shadow-brand-primary/10">
-                  <ShoppingCart className="w-4 h-4 md:w-5 md:h-5" />
-                </Link>
+                <div className="flex gap-2">
+                  <Link 
+                    to={`/product/${p.slug}`}
+                    className="w-8 h-8 md:w-11 md:h-11 bg-surface-700 text-zinc-400 rounded-lg md:rounded-xl flex items-center justify-center hover:bg-zinc-600 hover:text-white transition-all border border-zinc-700"
+                  >
+                    <Eye className="w-4 h-4 md:w-5 md:h-5" />
+                  </Link>
+                  <button 
+                    onClick={() => {
+                      const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+                      if (cart.find((item: any) => item.id === p.id)) {
+                        toast.error("Produk sudah ada di keranjang");
+                        return;
+                      }
+                      cart.push({
+                        id: p.id,
+                        name: p.name,
+                        price: p.price,
+                        thumbnail_url: p.thumbnail_url,
+                        category: p.category,
+                        slug: p.slug
+                      });
+                      localStorage.setItem('cart', JSON.stringify(cart));
+                      toast.success("Berhasil ditambahkan ke keranjang!");
+                      window.dispatchEvent(new Event('cart_updated'));
+                    }}
+                    className="w-8 h-8 md:w-11 md:h-11 bg-brand-primary text-white rounded-lg md:rounded-xl flex items-center justify-center hover:bg-brand-secondary transition-all shadow-lg shadow-brand-primary/20"
+                  >
+                    <ShoppingCart className="w-4 h-4 md:w-5 md:h-5" />
+                  </button>
+                </div>
               </div>
             </motion.div>
           )) : (
