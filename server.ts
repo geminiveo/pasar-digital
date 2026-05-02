@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
 import axios from "axios";
+import crypto from "crypto";
 import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
@@ -11,7 +12,11 @@ const midtransClient = require('midtrans-client');
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({
+  verify: (req: any, res, buf) => {
+    req.rawBody = buf.toString();
+  }
+}));
 app.use(express.urlencoded({ extended: true }));
 
 // API Health Check
@@ -116,15 +121,13 @@ async function completeOrder(rawOrderId: string, supabaseAdmin: any) {
 // API Route: Manual Sync/Check Status (Fallback when webhook is blocked)
 app.get("/api/payments/sync/:order_id", async (req, res) => {
   const { order_id } = req.params;
-  
   console.log(`[SYNC-CHECK] Manual check requested for: ${order_id}`);
   
   try {
     const { createClient } = await import('@supabase/supabase-js');
-    const supabaseAdmin = createClient(
-      process.env.VITE_SUPABASE_URL || '',
-      process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-    );
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
     // 1. Check current status in our DB first
     const { data: order } = await supabaseAdmin
@@ -138,76 +141,88 @@ app.get("/api/payments/sync/:order_id", async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
     
-    console.log(`[SYNC-CHECK] Current DB Status: ${order.status}`);
     if (order.status === 'completed') return res.json({ status: 'completed' });
-
-    // 2. If it's a Pakasir order, poll their API
-    const pakasirConfig = (await supabaseAdmin.from('system_settings').select('config').eq('id', 'pakasir_config').single()).data?.config;
     
-    if (pakasirConfig?.active && (order.payment_method === 'qris' || order.payment_method.includes('_va'))) {
-      const apiKey = pakasirConfig.api_key;
-      const baseUrl = "https://app.pakasir.com";
-
-      console.log(`[SYNC-CHECK] Querying Pakasir API via app domain: ${baseUrl}/api/v1/payments/${order_id}`);
-
-      try {
-        // Try both possible endpoints on the app domain
-        const endpoints = [
-          `/api/v1/payments/${order_id}`,
-          `/api/transactiondetail/${order_id}`
-        ];
+    // 2. Poll TriPay API if it's a TriPay order
+    if (order.payment_method?.toLowerCase().startsWith('tripay')) {
+      const { data: tpSettings } = await supabaseAdmin.from('system_settings').select('config').eq('id', 'tripay_config').single();
+      const tripayConfig = tpSettings?.config;
+      
+      if (tripayConfig?.active) {
+        const apiKey = tripayConfig.api_key;
+        const isSandbox = tripayConfig.is_sandbox;
+        const baseUrl = isSandbox ? "https://tripay.co.id/api-sandbox" : "https://tripay.co.id/api";
         
-        let response = null;
-        let lastError = null;
-        
-        for (const endpoint of endpoints) {
-          try {
-            const url = `${baseUrl}${endpoint}`;
-            console.log(`[SYNC-CHECK] Trying: ${url}`);
-            response = await axios.get(url, {
-              params: { api_key: apiKey }, // Some Indonesian APIs take api_key as param
-              headers: { 
-                'Authorization': `Bearer ${apiKey}`,
-                'Accept': 'application/json'
-              },
-              timeout: 5000
-            });
-            if (response.data) break;
-          } catch (e: any) {
-            lastError = e.response?.data || e.message;
-            console.warn(`[SYNC-CHECK] Failed for ${endpoint}: ${e.message}`);
+        try {
+          const response = await axios.get(`${baseUrl}/transaction/detail`, {
+            params: { merchant_ref: order_id }, // Changed from reference to merchant_ref
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+          });
+          
+          const d = response.data?.data;
+          const remoteStatus = String(d?.status || "").toLowerCase();
+          console.log(`[SYNC-TRIPAY] Result for ${order_id}: ${remoteStatus}`);
+          
+          if (remoteStatus === 'paid' || remoteStatus === 'settlement' || remoteStatus === 'completed') {
+            await completeOrder(order_id, supabaseAdmin);
+            return res.json({ status: 'completed', synced: true });
           }
+          return res.json({ status: remoteStatus || 'pending', synced: true });
+        } catch (err: any) {
+          console.error("[SYNC-TRIPAY] Error:", err.response?.data || err.message);
         }
+      }
+    }
+    
+    // 3. Poll Pakasir API
+    const { data: settings } = await supabaseAdmin.from('system_settings').select('config').eq('id', 'pakasir_config').single();
+    const pakasirConfig = settings?.config;
+    
+    if (pakasirConfig?.active) {
+      const apiKey = pakasirConfig.api_key;
+      // Use multiple fallback domains to combat ENOTFOUND issues in different environments
+      const baseUrls = [
+        "https://app.pakasir.com/api",
+        "https://pakasir.com/api",
+        "https://api.pakasir.com"
+      ];
 
-        if (!response) {
-          throw new Error(typeof lastError === 'string' ? lastError : JSON.stringify(lastError));
+      let response = null;
+      let lastError = null;
+
+      for (const baseUrl of baseUrls) {
+        try {
+          const url = `${baseUrl}/v1/payments/${order_id}`;
+          console.log(`[SYNC-CHECK] Trying: ${url}`);
+          response = await axios.get(url, {
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+            timeout: 5000
+          });
+          if (response.data) break;
+        } catch (e: any) {
+          lastError = e.message;
+          console.warn(`[SYNC-CHECK] Failed ${baseUrl}: ${e.message}`);
         }
+      }
 
-        console.log(`[SYNC-CHECK] Pakasir API Success! Payload:`, JSON.stringify(response.data));
-
-        // Status extraction (can vary between status, state, transaction_status)
+      if (response?.data) {
         const d = response.data;
         const remoteStatus = String(d.status || d.state || d.transaction_status || d.data?.status || "").toLowerCase();
         
         if (['completed', 'success', 'paid', 'settlement'].includes(remoteStatus)) {
-          console.log(`[SYNC-CHECK] Match found: ${remoteStatus}. Updating DB...`);
+          console.log(`[SYNC-CHECK] Match found: ${remoteStatus}. Syncing...`);
           await completeOrder(order_id, supabaseAdmin);
           return res.json({ status: 'completed', synced: true });
         }
-        
         return res.json({ status: remoteStatus || 'pending', synced: true });
-      } catch (err: any) {
-        console.error("[SYNC-CHECK] Pakasir API Error:", err.message);
-        await supabaseAdmin.from('system_logs').insert({
-          event_type: 'sync_error',
-          payload: { order_id, error: err.message, status: err.response?.status }
-        });
+      } else {
+        throw new Error(lastError || "Failed to reach Pakasir API");
       }
     }
 
     return res.json({ status: order.status, synced: false });
   } catch (err: any) {
-    console.error("[SYNC-CHECK] Internal Error:", err.message);
+    console.error("[SYNC-CHECK] Error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -290,6 +305,58 @@ app.post("/api/webhooks/pakasir", async (req, res) => {
   res.json({ status: "ignored", reason: `status_${status}_not_success` });
 });
 
+// API Route: TriPay Webhook
+app.post("/api/webhooks/tripay", async (req, res) => {
+  const signature = req.headers['x-callback-signature'];
+  const event = req.headers['x-callback-event'];
+  const payload = req.body;
+  const rawBody = (req as any).rawBody;
+
+  console.log("--- TRIPAY WEBHOOK ARRIVED ---");
+  
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+
+    const { data: settings } = await supabaseAdmin
+      .from('system_settings')
+      .select('config')
+      .eq('id', 'tripay_config')
+      .single();
+
+    const privateKey = settings?.config?.private_key;
+    if (!privateKey) return res.status(500).send("Config missing");
+
+    // Verify HMAC Signature using RAW BODY (TriPay requirement)
+    const internalSignature = crypto
+      .createHmac('sha256', privateKey)
+      .update(rawBody)
+      .digest('hex');
+
+    if (signature !== internalSignature) {
+      console.warn("[TRIPAY] Signature Mismatch!");
+      return res.status(403).send("Invalid signature");
+    }
+
+    if (event === 'payment_status' && (payload.status === 'PAID' || payload.status === 'SETTLEMENT')) {
+      const orderId = payload.merchant_ref;
+      await completeOrder(orderId, supabaseAdmin);
+      
+      await supabaseAdmin.from('system_logs').insert({
+        event_type: 'tripay_success',
+        payload: { order_id: orderId, status: payload.status }
+      });
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("[TRIPAY ERROR]", err.message);
+    res.status(500).send("Error");
+  }
+});
+
 // API Route: Midtrans Webhook
 app.post("/api/webhooks/midtrans", async (req, res) => {
   const notification = req.body;
@@ -360,6 +427,66 @@ app.post("/api/payments/create", async (req, res) => {
   } catch (error: any) {
     console.error("Pakasir API Error:", error.response?.data || error.message);
     res.status(500).json({ error: error.response?.data?.message || "Gagal membuat transaksi" });
+  }
+});
+
+// API Route: Create TriPay Transaction
+app.post("/api/payments/tripay/create", async (req, res) => {
+  const { order_id, amount, method, customer_name, customer_email, product_name } = req.body;
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+
+    const { data: settings } = await supabaseAdmin
+      .from('system_settings')
+      .select('config')
+      .eq('id', 'tripay_config')
+      .single();
+
+    const config = settings?.config;
+    if (!config?.active || !config?.api_key || !config?.private_key || !config?.merchant_code) {
+      return res.status(500).json({ error: "Konfigurasi TriPay belum lengkap atau belum aktif." });
+    }
+
+    const baseUrl = config.is_sandbox ? "https://tripay.co.id/api-sandbox" : "https://tripay.co.id/api";
+    
+    // Generate Signature
+    const signature = crypto
+      .createHmac('sha256', config.private_key)
+      .update(config.merchant_code + order_id + amount)
+      .digest('hex');
+
+    const payload = {
+      method: method, // e.g., 'QRIS', 'MYBVA', 'BCAVA'
+      merchant_ref: order_id,
+      amount: amount,
+      customer_name: customer_name || "Customer",
+      customer_email: customer_email || "customer@example.com",
+      order_items: [
+        {
+          sku: order_id,
+          name: product_name || "Produk Digital",
+          price: amount,
+          quantity: 1
+        }
+      ],
+      signature: signature
+    };
+
+    const response = await axios.post(`${baseUrl}/transaction/create`, payload, {
+      headers: { 'Authorization': `Bearer ${config.api_key}` }
+    });
+
+    res.json(response.data);
+  } catch (error: any) {
+    console.error("TriPay API Error:", error.response?.data || error.message);
+    res.status(500).json({ 
+      error: error.response?.data?.message || "Gagal membuat transaksi TriPay",
+      detail: error.response?.data
+    });
   }
 });
 
