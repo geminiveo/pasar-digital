@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ShoppingBag, Trash2, ArrowRight, ChevronLeft, ShieldCheck, CreditCard } from 'lucide-react';
+import { ShoppingBag, Trash2, ArrowRight, ChevronLeft, ShieldCheck, CreditCard, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
@@ -87,8 +87,14 @@ export default function Cart() {
                      <Trash2 className="w-5 h-5 mx-auto" />
                    </button>
                    <Link 
+                    to={`/product/${item.slug}`}
+                    className="flex-1 sm:flex-none p-3 bg-surface-700 text-zinc-400 hover:bg-surface-600 hover:text-white rounded-xl transition-all border border-zinc-700"
+                   >
+                     <Eye className="w-5 h-5 mx-auto" />
+                   </Link>
+                   <Link 
                     to={`/checkout/${item.id}`}
-                    className="flex-[3] sm:flex-none p-3 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white rounded-xl transition-all border border-brand-primary/20"
+                    className="flex-[2] sm:flex-none p-3 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white rounded-xl transition-all border border-brand-primary/20"
                    >
                      <ArrowRight className="w-5 h-5 mx-auto" />
                    </Link>
@@ -126,7 +132,7 @@ export default function Cart() {
 
               <button 
                 onClick={() => {
-                  toast.info("Fitur checkout sekaligus (batch) segera hadir. Silakan checkout produk satu per satu.");
+                  navigate('/checkout/batch');
                 }}
                 className="btn-primary w-full py-4 text-lg font-black tracking-widest uppercase mt-4"
               >
