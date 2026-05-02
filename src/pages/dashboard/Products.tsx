@@ -17,9 +17,31 @@ export default function Products({ profile }: { profile: Profile }) {
     name: '',
     description: '',
     price: '',
-    category: 'Software',
+    category: 'Source Code',
     external_link: '',
+    metadata: {
+      framework: '',
+      db_backend: '',
+      cms_frontend: '',
+      demo_link: '',
+      support_enabled: false,
+      support_duration: '',
+      other_features: '',
+      version: '1.0.0',
+      compatibility: '',
+    }
   });
+
+  const handleMetadataChange = (key: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      metadata: {
+        ...prev.metadata,
+        [key]: value
+      }
+    }));
+  };
+
   const [thumbnail, setThumbnail] = useState<File | null>(null);
   const [productFile, setProductFile] = useState<File | null>(null);
 
@@ -109,6 +131,7 @@ export default function Products({ profile }: { profile: Profile }) {
           thumbnail_url: thumbnailUrl,
           download_url: downloadUrl,
           slug,
+          metadata: formData.metadata,
           is_active: true
         }
       ]).select();
@@ -119,7 +142,24 @@ export default function Products({ profile }: { profile: Profile }) {
       setShowAddModal(false);
       fetchProducts();
       // Reset Form
-      setFormData({ name: '', description: '', price: '', category: 'Software', external_link: '' });
+      setFormData({ 
+        name: '', 
+        description: '', 
+        price: '', 
+        category: 'Source Code', 
+        external_link: '',
+        metadata: {
+          framework: '',
+          db_backend: '',
+          cms_frontend: '',
+          demo_link: '',
+          support_enabled: false,
+          support_duration: '',
+          other_features: '',
+          version: '1.0.0',
+          compatibility: '',
+        }
+      });
       setThumbnail(null);
       setProductFile(null);
     } catch (err: any) {
@@ -403,6 +443,156 @@ export default function Products({ profile }: { profile: Profile }) {
                     className="input-field resize-none py-3" 
                     placeholder="Jelaskan fitur dan keunggulan produk Anda..."
                   ></textarea>
+                </div>
+
+                {/* Dynamic Category Fields */}
+                <div className="pt-4 border-t border-white/5 space-y-6">
+                  <h3 className="text-sm font-black text-white italic uppercase tracking-wider">Detail <span className="text-brand-primary">Spesifikasi</span> (Opsional)</h3>
+                  
+                  {formData.category === 'Source Code' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none">Frameworks</label>
+                        <select 
+                          value={formData.metadata.framework}
+                          onChange={e => handleMetadataChange('framework', e.target.value)}
+                          className="input-field"
+                        >
+                          <option value="">Pilih Framework</option>
+                          <option value="React">React</option>
+                          <option value="Vue">Vue</option>
+                          <option value="Angular">Angular</option>
+                          <option value="Svelte">Svelte</option>
+                          <option value="Next.js">Next.js</option>
+                          <option value="Nuxt.js">Nuxt.js</option>
+                          <option value="Node.js">Node.js</option>
+                          <option value="Laravel">Laravel</option>
+                          <option value="Codeigniter">Codeigniter</option>
+                          <option value="Django">Django</option>
+                          <option value="Ruby on Rails">Ruby on Rails</option>
+                          <option value="Spring Boot">Spring Boot</option>
+                          <option value="Go">Go / Fiber</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none">DB / Back End</label>
+                        <select 
+                          value={formData.metadata.db_backend}
+                          onChange={e => handleMetadataChange('db_backend', e.target.value)}
+                          className="input-field"
+                        >
+                          <option value="">Pilih Database</option>
+                          <option value="Supabase">Supabase</option>
+                          <option value="Firebase">Firebase</option>
+                          <option value="MongoDB">MongoDB</option>
+                          <option value="MySQL">MySQL</option>
+                          <option value="PostgreSQL">PostgreSQL</option>
+                          <option value="Spreadsheet">Google Spreadsheet</option>
+                          <option value="Redis">Redis</option>
+                          <option value="SQLite">SQLite</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none">CMS / Deployment</label>
+                        <select 
+                          value={formData.metadata.cms_frontend}
+                          onChange={e => handleMetadataChange('cms_frontend', e.target.value)}
+                          className="input-field"
+                        >
+                          <option value="">Pilih Platform</option>
+                          <option value="Vercel">Vercel</option>
+                          <option value="Netlify">Netlify</option>
+                          <option value="Google Apps Script">Google Apps Script</option>
+                          <option value="Blogspot">Blogspot</option>
+                          <option value="Wordpress">Wordpress</option>
+                          <option value="Ghost">Ghost</option>
+                          <option value="Docker">Docker</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none">Demo Link</label>
+                        <input 
+                          type="url" 
+                          value={formData.metadata.demo_link}
+                          onChange={e => handleMetadataChange('demo_link', e.target.value)}
+                          placeholder="https://demo.example.com" 
+                          className="input-field" 
+                        />
+                      </div>
+                      <div className="col-span-1 md:col-span-2 grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none block">Support Vendor</label>
+                          <div className="flex items-center gap-4 py-2">
+                             <button 
+                              type="button"
+                              onClick={() => handleMetadataChange('support_enabled', !formData.metadata.support_enabled)}
+                              className={`w-12 h-6 rounded-full transition-all relative ${formData.metadata.support_enabled ? 'bg-brand-primary' : 'bg-zinc-800'}`}
+                             >
+                               <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${formData.metadata.support_enabled ? 'left-7' : 'left-1'}`}></div>
+                             </button>
+                             <span className="text-xs font-bold text-zinc-400">{formData.metadata.support_enabled ? 'Aktif' : 'Non-aktif'}</span>
+                          </div>
+                        </div>
+                        {formData.metadata.support_enabled && (
+                          <div className="space-y-1 animate-in slide-in-from-left-2 transition-all">
+                            <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none">Durasi Support</label>
+                            <input 
+                              type="text" 
+                              value={formData.metadata.support_duration}
+                              onChange={e => handleMetadataChange('support_duration', e.target.value)}
+                              placeholder="Contoh: 6 Bulan" 
+                              className="input-field" 
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className="col-span-1 md:col-span-2 space-y-1">
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none">Fitur Lainnya</label>
+                        <input 
+                          type="text" 
+                          value={formData.metadata.other_features}
+                          onChange={e => handleMetadataChange('other_features', e.target.value)}
+                          placeholder="Contoh: Multi-language, Dark Mode, API Ready" 
+                          className="input-field" 
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  { (formData.category === 'Theme' || formData.category === 'Plugin' || formData.category === 'Mobile Apps') && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none">Versi</label>
+                        <input 
+                          type="text" 
+                          value={formData.metadata.version}
+                          onChange={e => handleMetadataChange('version', e.target.value)}
+                          placeholder="1.0.0" 
+                          className="input-field" 
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none">Kompatibilitas</label>
+                        <input 
+                          type="text" 
+                          value={formData.metadata.compatibility}
+                          onChange={e => handleMetadataChange('compatibility', e.target.value)}
+                          placeholder={formData.category === 'Mobile Apps' ? 'Android 10+, iOS 14+' : 'PHP 8.x, WordPress 6.x'} 
+                          className="input-field" 
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none">Demo Link</label>
+                        <input 
+                          type="url" 
+                          value={formData.metadata.demo_link}
+                          onChange={e => handleMetadataChange('demo_link', e.target.value)}
+                          placeholder="https://demo.example.com" 
+                          className="input-field" 
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-4 pt-4">
