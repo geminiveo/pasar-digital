@@ -90,6 +90,7 @@ export default function Checkout() {
 
   const [midtransConfig, setMidtransConfig] = useState<any>(null);
   const [pakasirConfig, setPakasirConfig] = useState<any>(null);
+  const [siteConfig, setSiteConfig] = useState<any>(null);
 
   useEffect(() => {
     async function init() {
@@ -133,6 +134,7 @@ export default function Checkout() {
 
       if (settingsMap?.midtrans_config) setMidtransConfig(settingsMap.midtrans_config);
       if (settingsMap?.pakasir_config) setPakasirConfig(settingsMap.pakasir_config);
+      if (settingsMap?.site_config) setSiteConfig(settingsMap.site_config);
 
       setLoading(false);
     }
@@ -157,9 +159,12 @@ export default function Checkout() {
     }
   }, [midtransConfig]);
 
-  const totalAmount = Math.round(isBatch 
+  const serviceFee = siteConfig?.checkout_service_fee || 0;
+  const subtotal = isBatch 
     ? batchProducts.reduce((sum, p) => sum + p.price, 0)
-    : product?.price || 0);
+    : product?.price || 0;
+
+  const totalAmount = Math.round(subtotal + serviceFee);
 
   const handlePayment = async () => {
     setPaymentLoading(true);
@@ -384,11 +389,11 @@ export default function Checkout() {
             <div className="space-y-4 pt-6 border-t border-zinc-800">
               <div className="flex justify-between text-zinc-400 text-sm">
                 <span>Subtotal ({isBatch ? batchProducts.length : 1} Produk)</span>
-                <span className="text-white font-mono">Rp {totalAmount.toLocaleString('id-ID')}</span>
+                <span className="text-white font-mono">Rp {subtotal.toLocaleString('id-ID')}</span>
               </div>
               <div className="flex justify-between text-zinc-400 text-sm">
                 <span>Biaya Layanan</span>
-                <span className="text-white font-mono">Gratis</span>
+                <span className="text-white font-mono">{serviceFee > 0 ? `Rp ${serviceFee.toLocaleString('id-ID')}` : 'Gratis'}</span>
               </div>
               <div className="flex justify-between text-xl font-black text-white pt-4 border-t border-zinc-800">
                 <span>Total</span>
