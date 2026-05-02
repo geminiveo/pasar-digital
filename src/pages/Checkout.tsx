@@ -67,19 +67,20 @@ export default function Checkout() {
       clearInterval(interval);
       supabase.removeChannel(channel);
       
-      if (paymentLoading || paymentData) {
-        setPaymentLoading(false);
-        setPaymentData(null);
-        if (isBatch) {
-          localStorage.removeItem('cart');
-          window.dispatchEvent(new Event('cart_updated'));
-        }
-        toast.success("Pembayaran Terdeteksi!", {
-          description: "Dana telah dikonfirmasi. Mengalihkan Anda...",
-          duration: 3000
-        });
-        navigate('/dashboard/purchases');
+      setPaymentLoading(false);
+      setPaymentData(null);
+      
+      if (isBatch) {
+        localStorage.removeItem('cart');
+        window.dispatchEvent(new Event('cart_updated'));
       }
+      
+      toast.success("Pembayaran Terdeteksi!", {
+        description: "Dana telah dikonfirmasi. Mengalihkan Anda...",
+        duration: 3000
+      });
+      
+      navigate('/dashboard/purchases');
     };
 
     return () => {
