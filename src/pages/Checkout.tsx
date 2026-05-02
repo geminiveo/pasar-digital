@@ -14,10 +14,13 @@ import { toast } from 'sonner';
 export default function Checkout() {
   const { productId } = useParams();
   const [product, setProduct] = useState<Product | any>(null);
+  const [batchProducts, setBatchProducts] = useState<Product[]>([]);
+  const isBatch = productId === 'batch';
   const [loading, setLoading] = useState(true);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
   const [currentOrderSupabaseId, setCurrentOrderSupabaseId] = useState<string | null>(null);
+  const [batchOrderIds, setBatchOrderIds] = useState<string[]>([]);
   const [selectedMethod, setSelectedMethod] = useState('qris');
   const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
@@ -67,6 +70,10 @@ export default function Checkout() {
       if (paymentLoading || paymentData) {
         setPaymentLoading(false);
         setPaymentData(null);
+        if (isBatch) {
+          localStorage.removeItem('cart');
+          window.dispatchEvent(new Event('cart_updated'));
+        }
         toast.success("Pembayaran Terdeteksi!", {
           description: "Dana telah dikonfirmasi. Mengalihkan Anda...",
           duration: 3000
@@ -94,13 +101,28 @@ export default function Checkout() {
       }
       setUser(session.user);
 
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('id', productId)
-        .single();
-      
-      if (data) setProduct(data);
+      if (isBatch) {
+        const savedCart = JSON.parse(localStorage.getItem('cart') || '[]');
+        if (savedCart.length === 0) {
+          toast.error("Keranjang kosong!");
+          navigate('/shop');
+          return;
+        }
+        setBatchProducts(savedCart);
+      } else {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .eq('id', productId)
+          .single();
+        
+        if (data) setProduct(data);
+        else {
+          toast.error("Produk tidak ditemukan");
+          navigate('/shop');
+          return;
+        }
+      }
 
       // Fetch all payment configs
       const { data: settings } = await supabase.from('system_settings').select('*');
@@ -135,27 +157,51 @@ export default function Checkout() {
     }
   }, [midtransConfig]);
 
+  const totalAmount = Math.round(isBatch 
+    ? batchProducts.reduce((sum, p) => sum + p.price, 0)
+    : product?.price || 0);
+
   const handlePayment = async () => {
     setPaymentLoading(true);
     try {
-      const orderId = `INV-${Date.now()}`;
+      const externalOrderId = `INV-${Date.now()}`;
       
-      // 1. Create order in Supabase
-      const { data: order, error } = await supabase
-        .from('orders')
-        .insert({
+      // 1. Create order(s) in Supabase
+      if (isBatch) {
+        const ordersToInsert = batchProducts.map(p => ({
           buyer_id: user.id,
-          product_id: product.id,
-          amount: product.price,
+          product_id: p.id,
+          amount: p.price,
           status: 'pending',
           payment_method: selectedMethod,
-          order_id_external: orderId
-        })
-        .select()
-        .single();
+          order_id_external: externalOrderId
+        }));
 
-      if (error) throw error;
-      setCurrentOrderSupabaseId(order.id);
+        const { data: orders, error } = await supabase
+          .from('orders')
+          .insert(ordersToInsert)
+          .select();
+
+        if (error) throw error;
+        // Use the first one for tracking status (they all have same externalOrderId)
+        setCurrentOrderSupabaseId(orders[0].id);
+      } else {
+        const { data: order, error } = await supabase
+          .from('orders')
+          .insert({
+            buyer_id: user.id,
+            product_id: product.id,
+            amount: product.price,
+            status: 'pending',
+            payment_method: selectedMethod,
+            order_id_external: externalOrderId
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        setCurrentOrderSupabaseId(order.id);
+      }
 
       // Handle Midtrans
       if (selectedMethod === 'midtrans') {
@@ -164,32 +210,32 @@ export default function Checkout() {
             throw new Error("Konfigurasi Midtrans belum lengkap di menu Admin.");
           }
 
-          // Force a timeout for the request to avoid hanging
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
-
           const response = await axios.post('/api/payments/midtrans/token', {
-            order_id: orderId,
-            amount: product.price,
+            order_id: externalOrderId,
+            amount: totalAmount,
             customer_details: {
               first_name: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Customer',
               email: user?.email,
             }
-          }, { 
-            signal: controller.signal 
           });
-
-          clearTimeout(timeoutId);
 
           if (response.data.token) {
             // @ts-ignore
-            if (!window.snap) {
-              throw new Error("Midtrans Snap.js belum termuat sempurna. Silakan refresh.");
-            }
-            // @ts-ignore
             window.snap.pay(response.data.token, {
-              onSuccess: () => navigate('/dashboard/purchases'),
-              onPending: () => navigate('/dashboard/purchases'),
+              onSuccess: () => {
+                if (isBatch) {
+                  localStorage.removeItem('cart');
+                  window.dispatchEvent(new Event('cart_updated'));
+                }
+                navigate('/dashboard/purchases');
+              },
+              onPending: () => {
+                if (isBatch) {
+                  localStorage.removeItem('cart');
+                  window.dispatchEvent(new Event('cart_updated'));
+                }
+                navigate('/dashboard/purchases');
+              },
               onError: () => toast.error("Pembayaran gagal."),
               onClose: () => toast.info("Jendela pembayaran ditutup.")
             });
@@ -197,17 +243,7 @@ export default function Checkout() {
             throw new Error(response.data.message || "Gagal mendapatkan token.");
           }
         } catch (err: any) {
-          let errMsg = "Terjadi kesalahan koneksi.";
-          if (err.name === 'AbortError') {
-            errMsg = "Server terlalu lama merespon (Timed Out). Cek koneksi Anda.";
-          } else if (err.response?.data?.message) {
-            errMsg = err.response.data.message;
-          }
-          
-          toast.error(`Kesalahan: ${errMsg}`, {
-            description: "Pastikan Server Key di Admin > Settings sudah benar. IP Whitelist di Midtrans wajib KOSONG.",
-            duration: 5000
-          });
+          toast.error(`Kesalahan: ${err.response?.data?.message || err.message}`);
         } finally {
           setPaymentLoading(false);
         }
@@ -216,8 +252,8 @@ export default function Checkout() {
 
       // Handle Pakasir (Proxy)
       const response = await axios.post('/api/payments/create', {
-        order_id: orderId,
-        amount: product.price,
+        order_id: externalOrderId,
+        amount: totalAmount,
         method: selectedMethod
       });
 
@@ -226,8 +262,15 @@ export default function Checkout() {
         toast.success("Rincian pembayaran telah dibuat!");
       }
     } catch (error: any) {
-      console.error(error);
-      const message = error.response?.data?.error || "Gagal memproses pembayaran. Coba lagi.";
+      console.error("Payment Process Error:", error);
+      let message = "Gagal memproses pembayaran. Coba lagi.";
+      
+      if (error.response?.data?.message) {
+        message = error.response.data.message;
+      } else if (error.message) {
+        message = error.message;
+      }
+      
       toast.error(message);
     } finally {
       setPaymentLoading(false);
@@ -266,9 +309,9 @@ export default function Checkout() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-16">
-      <Link to={`/product/${product.slug}`} className="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors mb-8 text-sm font-bold uppercase tracking-widest">
+      <Link to={isBatch ? "/cart" : `/product/${product?.slug}`} className="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors mb-8 text-sm font-bold uppercase tracking-widest">
         <ChevronLeft className="w-4 h-4" />
-        Kembali ke Produk
+        {isBatch ? 'Kembali ke Keranjang' : 'Kembali ke Produk'}
       </Link>
 
       {!paymentData ? (
@@ -310,20 +353,38 @@ export default function Checkout() {
           {/* Summary */}
           <div className="glass-card border-brand-primary/20 h-fit">
             <h3 className="text-xl font-bold mb-6">Ringkasan Pesanan</h3>
-            <div className="flex gap-4 mb-8">
-              <div className="w-16 h-16 rounded-xl bg-surface-700 border border-zinc-700 overflow-hidden flex-shrink-0">
-                <img src={product.thumbnail_url} className="w-full h-full object-cover" alt="" />
-              </div>
-              <div>
-                <h4 className="font-bold text-white leading-tight line-clamp-2">{product.name}</h4>
-                <p className="text-xs text-zinc-500 mt-1 uppercase font-bold tracking-widest">{product.category}</p>
-              </div>
+            
+            <div className="max-h-64 overflow-y-auto space-y-4 mb-8 pr-2 custom-scrollbar">
+              {isBatch ? (
+                batchProducts.map(p => (
+                  <div key={p.id} className="flex gap-4">
+                    <div className="w-12 h-12 rounded-lg bg-surface-700 border border-zinc-700 overflow-hidden flex-shrink-0">
+                      <img src={p.thumbnail_url} className="w-full h-full object-cover" alt="" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white text-xs leading-tight line-clamp-1">{p.name}</h4>
+                      <p className="text-[10px] text-zinc-500 mt-0.5 uppercase font-bold tracking-widest">{p.category}</p>
+                      <p className="text-xs font-mono text-zinc-400 mt-1">Rp {p.price.toLocaleString('id-ID')}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex gap-4">
+                  <div className="w-16 h-16 rounded-xl bg-surface-700 border border-zinc-700 overflow-hidden flex-shrink-0">
+                    <img src={product?.thumbnail_url} className="w-full h-full object-cover" alt="" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white leading-tight line-clamp-2">{product?.name}</h4>
+                    <p className="text-xs text-zinc-500 mt-1 uppercase font-bold tracking-widest">{product?.category}</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-4 pt-6 border-t border-zinc-800">
               <div className="flex justify-between text-zinc-400 text-sm">
-                <span>Subtotal</span>
-                <span className="text-white font-mono">Rp {product.price.toLocaleString('id-ID')}</span>
+                <span>Subtotal ({isBatch ? batchProducts.length : 1} Produk)</span>
+                <span className="text-white font-mono">Rp {totalAmount.toLocaleString('id-ID')}</span>
               </div>
               <div className="flex justify-between text-zinc-400 text-sm">
                 <span>Biaya Layanan</span>
@@ -331,7 +392,7 @@ export default function Checkout() {
               </div>
               <div className="flex justify-between text-xl font-black text-white pt-4 border-t border-zinc-800">
                 <span>Total</span>
-                <span>Rp {product.price.toLocaleString('id-ID')}</span>
+                <span>Rp {totalAmount.toLocaleString('id-ID')}</span>
               </div>
             </div>
 
