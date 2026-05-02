@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   ShieldCheck, CreditCard, QrCode, Banknote, ArrowRight, 
-  Lock, CheckCircle2, Clock, Smartphone, ChevronLeft
+  Lock, CheckCircle2, Clock, Smartphone, ChevronLeft,
+  RefreshCw
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { motion } from 'motion/react';
@@ -140,6 +141,7 @@ export default function Checkout() {
 
   const [midtransConfig, setMidtransConfig] = useState<any>(null);
   const [pakasirConfig, setPakasirConfig] = useState<any>(null);
+  const [tripayConfig, setTripayConfig] = useState<any>(null);
   const [siteConfig, setSiteConfig] = useState<any>(null);
 
   useEffect(() => {
@@ -184,6 +186,7 @@ export default function Checkout() {
 
       if (settingsMap?.midtrans_config) setMidtransConfig(settingsMap.midtrans_config);
       if (settingsMap?.pakasir_config) setPakasirConfig(settingsMap.pakasir_config);
+      if (settingsMap?.tripay_config) setTripayConfig(settingsMap.tripay_config);
       if (settingsMap?.site_config) setSiteConfig(settingsMap.site_config);
 
       setLoading(false);
@@ -306,6 +309,42 @@ export default function Checkout() {
         return;
       }
 
+      // Handle TriPay
+      if (selectedMethod.startsWith('tripay_')) {
+        try {
+          const methodCode = selectedMethod.replace('tripay_', '');
+          const response = await axios.post('/api/payments/tripay/create', {
+            order_id: externalOrderId,
+            amount: totalAmount,
+            method: methodCode,
+            customer_name: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Customer',
+            customer_email: user?.email,
+            product_name: isBatch ? `${batchProducts.length} Produk Digital` : product.name
+          });
+
+          if (response.data?.success) {
+            const data = response.data.data;
+            setPaymentData({
+              order_id: data.merchant_ref,
+              payment_number: data.pay_code || data.qr_url || data.pay_url,
+              total_payment: data.amount,
+              qr_url: data.qr_url,
+              pay_url: data.pay_url,
+              instructions: data.instructions,
+              expiry: data.expired_time
+            });
+            toast.success("Rincian pembayaran TriPay telah dibuat!");
+          } else {
+            throw new Error(response.data?.message || "Gagal membuat transaksi TriPay");
+          }
+        } catch (err: any) {
+          toast.error(`TriPay Error: ${err.response?.data?.error || err.message}`);
+        } finally {
+          setPaymentLoading(false);
+        }
+        return;
+      }
+
       // Handle Pakasir (Proxy)
       const response = await axios.post('/api/payments/create', {
         order_id: externalOrderId,
@@ -341,6 +380,12 @@ export default function Checkout() {
     { id: 'cimb_va', name: 'CIMB Niaga VA', icon: <CreditCard />, desc: 'Transfer Bank CIMB', feeDesc: 'Fee Rp 1.000', gateway: 'pakasir' },
     { id: 'mandiri_va', name: 'Mandiri Bill', icon: <CreditCard />, desc: 'Mandiri Bill Payment', feeDesc: 'Fee Rp 1.000', gateway: 'pakasir' },
     { id: 'permata_va', name: 'Permata VA', icon: <CreditCard />, desc: 'Transfer Bank Permata', feeDesc: 'Fee Rp 1.000', gateway: 'pakasir' },
+    // TriPay Methods
+    { id: 'tripay_QRIS', name: 'TriPay QRIS', icon: <QrCode />, desc: 'QRIS (E-Wallet & M-Banking)', feeDesc: 'Fee 0.7%', gateway: 'tripay' },
+    { id: 'tripay_BCAVA', name: 'TriPay BCA VA', icon: <CreditCard />, desc: 'Transfer Virtual Account BCA', feeDesc: 'Admin Rp 4.500', gateway: 'tripay' },
+    { id: 'tripay_BNIVA', name: 'TriPay BNI VA', icon: <CreditCard />, desc: 'Transfer Virtual Account BNI', feeDesc: 'Admin Rp 4.250', gateway: 'tripay' },
+    { id: 'tripay_BRIVA', name: 'TriPay BRI VA', icon: <CreditCard />, desc: 'Transfer Virtual Account BRI', feeDesc: 'Admin Rp 4.250', gateway: 'tripay' },
+    { id: 'tripay_MANDIRIVA', name: 'TriPay Mandiri VA', icon: <CreditCard />, desc: 'Transfer Virtual Account Mandiri', feeDesc: 'Admin Rp 4.250', gateway: 'tripay' },
   ];
 
   const paymentMethods = allPaymentMethods.filter(m => {
@@ -350,6 +395,9 @@ export default function Checkout() {
     if (m.gateway === 'pakasir') {
       // Check if general Pakasir is active AND this specific method is enabled
       return pakasirConfig?.active === true && pakasirConfig?.enabled_methods?.[m.id] === true;
+    }
+    if (m.gateway === 'tripay') {
+      return tripayConfig?.active === true;
     }
     return false;
   });
@@ -496,13 +544,21 @@ export default function Checkout() {
           <p className="text-zinc-500 text-sm mb-6 uppercase font-bold tracking-widest">Order ID: {paymentData.order_id}</p>
 
           <div className="bg-white p-4 rounded-3xl mb-8 shadow-[0_0_50px_rgba(139,92,246,0.2)]">
-            {selectedMethod === 'qris' ? (
-              <QRCodeSVG value={paymentData.payment_number} size={250} />
+            {selectedMethod.toLowerCase().includes('qris') ? (
+              <QRCodeSVG value={paymentData.qr_url || paymentData.payment_number} size={250} />
             ) : (
               <div className="bg-surface-900 px-8 py-10 rounded-2xl border border-zinc-800 min-w-[250px]">
                 <CreditCard className="w-12 h-12 text-brand-primary mx-auto mb-4" />
                 <p className="text-2xl font-black text-white tracking-widest mb-2">{paymentData.payment_number}</p>
-                <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest">Salin Nomor VA</p>
+                <p 
+                  onClick={() => {
+                    navigator.clipboard.writeText(paymentData.payment_number);
+                    toast.success("Nomor VA disalin!");
+                  }}
+                  className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest cursor-pointer hover:text-brand-primary"
+                >
+                  Salin Nomor VA
+                </p>
               </div>
             )}
           </div>
@@ -518,50 +574,51 @@ export default function Checkout() {
              </div>
           </div>
 
-          <div className="space-y-4 w-full">
-            <button className="flex items-center justify-center gap-2 w-full py-4 bg-green-500/10 text-green-400 font-black rounded-2xl border border-green-500/20 text-xs uppercase tracking-[0.2em]">
-               <div className="w-2 h-2 rounded-full bg-green-400 animate-ping"></div>
-               Menunggu Konfirmasi Sistem...
-            </button>
-            <p className="text-zinc-600 text-[10px] leading-relaxed italic text-center">
-              Setelah pembayaran berhasil, halaman ini akan otomatis dialihkan ke dashboard untuk mendapatkan file produk.
-            </p>
-            <button 
-              onClick={async () => {
-                if (!currentExternalId) {
-                  toast.error("Order ID tidak ditemukan.");
-                  return;
-                }
-                
-                const checkToast = toast.loading("Memeriksa status ke server pembayaran...");
-                
-                try {
-                  const { data: syncData } = await axios.get(`/api/payments/sync/${currentExternalId}`);
-                  
-                  toast.dismiss(checkToast);
-                  
-                  if (syncData.status === 'completed') {
-                    handleSuccessfulPayment();
-                  } else {
-                    const statusMsg = syncData.status === 'pending' || syncData.status === 'unpaid' 
-                      ? "Pembayaran belum terdeteksi di sistem Pakasir."
-                      : `Status: ${syncData.status?.toUpperCase() || 'BELUM DIBAYAR'}`;
-                      
-                    toast.info(statusMsg, {
-                      description: "Pastikan Anda sudah menyelesaikan transfer dan tunggu 1-2 menit."
-                    });
+            <div className="space-y-4 w-full">
+              <button 
+                onClick={async () => {
+                  if (!currentExternalId) {
+                    toast.error("Order ID tidak ditemukan.");
+                    return;
                   }
-                } catch (err) {
-                  toast.dismiss(checkToast);
-                  console.error(err);
-                  toast.error("Gagal menghubungi server pembayaran.");
-                }
-              }}
-              className="text-[10px] text-brand-primary font-bold uppercase tracking-widest hover:underline block mx-auto mt-2"
-            >
-              Sudah Bayar? Cek Status Manual
-            </button>
-          </div>
+                  
+                  const checkToast = toast.loading("Sinkronisasi otomatis dengan Pakasir...");
+                  
+                  try {
+                    const { data: syncData } = await axios.get(`/api/payments/sync/${currentExternalId}`);
+                    
+                    toast.dismiss(checkToast);
+                    
+                    if (syncData.status === 'completed') {
+                      toast.success("Pembayaran terverifikasi!");
+                      handleSuccessfulPayment();
+                    } else {
+                      const statusMsg = syncData.status === 'pending' || syncData.status === 'unpaid' 
+                        ? "Pembayaran belum masuk."
+                        : `Status: ${syncData.status?.toUpperCase()}`;
+                        
+                      toast.info(statusMsg, {
+                        description: "Pastikan Anda sudah menyelesaikan transfer dan klik tombol ini lagi dalam 1 menit."
+                      });
+                    }
+                  } catch (err: any) {
+                    toast.dismiss(checkToast);
+                    toast.error("Gagal sinkronisasi. Coba lagi nanti.");
+                  }
+                }}
+                className="w-full py-4 bg-brand-primary text-white rounded-xl font-bold shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
+              >
+                <RefreshCw className="w-5 h-5" />
+                SAYA SUDAH BAYAR
+              </button>
+              <button className="flex items-center justify-center gap-2 w-full py-3 bg-green-500/5 text-green-500/60 font-bold rounded-xl border border-green-500/10 text-[10px] uppercase tracking-widest">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping"></div>
+                Menunggu Konfirmasi Sistem...
+              </button>
+              <p className="text-zinc-500 text-[10px] leading-relaxed text-center px-4">
+                Halaman ini akan otomatis tertutup begitu pembayaran terdeteksi. Gunakan tombol di atas jika Anda ingin mempercepat proses verifikasi.
+              </p>
+            </div>
         </motion.div>
       )}
     </div>
