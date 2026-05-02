@@ -4,27 +4,33 @@ import { supabase } from '../../lib/supabase';
 import { Order, Profile } from '../../types';
 import { toast } from 'sonner';
 
-export default function Orders({ profile }: { profile: Profile }) {
+export default function Orders({ profile, type = 'purchases' }: { profile: Profile, type?: 'sales' | 'purchases' }) {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchOrders();
-  }, [profile.id]);
+  }, [profile.id, type]);
 
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const isVendor = profile.role === 'vendor';
-      
       let query;
-      if (isVendor) {
-        // Find orders where the product belongs to this vendor using inner join
-        query = supabase
-          .from('orders')
-          .select('*, product:products!inner(*)')
-          .eq('products.vendor_id', profile.id);
+      if (type === 'sales') {
+        if (profile.role === 'admin') {
+          // Admin can see all orders
+          query = supabase
+            .from('orders')
+            .select('*, product:products(*), buyer:profiles!orders_buyer_id_fkey(full_name)');
+        } else {
+          // Vendor sees their own product sales
+          query = supabase
+            .from('orders')
+            .select('*, product:products!inner(*), buyer:profiles!orders_buyer_id_fkey(full_name)')
+            .eq('products.vendor_id', profile.id);
+        }
       } else {
+        // Purchases - everyone sees their own
         query = supabase
           .from('orders')
           .select('*, product:products(*)')
@@ -43,8 +49,8 @@ export default function Orders({ profile }: { profile: Profile }) {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
-        <h1 className="text-2xl font-black text-white">{profile.role === 'vendor' ? 'Riwayat Penjualan' : 'Riwayat Pembelian'}</h1>
-        <p className="text-zinc-500 text-sm">Lihat semua transaksi yang telah {profile.role === 'vendor' ? 'terjadi di toko Anda' : 'Anda lakukan'}.</p>
+        <h1 className="text-2xl font-black text-white">{type === 'sales' ? 'Riwayat Penjualan' : 'Riwayat Pembelian'}</h1>
+        <p className="text-zinc-500 text-sm">Lihat semua transaksi yang telah {type === 'sales' ? 'terjadi di toko Anda' : 'Anda lakukan'}.</p>
       </div>
 
       <div className="glass-card p-0 overflow-hidden">
@@ -54,6 +60,7 @@ export default function Orders({ profile }: { profile: Profile }) {
               <tr>
                 <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Order ID</th>
                 <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Produk</th>
+                {type === 'sales' && <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Pembeli</th>}
                 <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Tgl Transaksi</th>
                 <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Total</th>
@@ -76,6 +83,11 @@ export default function Orders({ profile }: { profile: Profile }) {
                     <td className="px-6 py-4">
                       <p className="font-bold text-white text-sm line-clamp-1">{order.product?.name || 'Produk Dihapus'}</p>
                     </td>
+                    {type === 'sales' && (
+                      <td className="px-6 py-4">
+                        <p className="text-zinc-400 text-sm truncate max-w-[120px]">{order.buyer?.full_name || 'Buyer'}</p>
+                      </td>
+                    )}
                     <td className="px-6 py-4">
                       <div className="text-xs text-zinc-500 flex items-center gap-1">
                         <Clock className="w-3 h-3" />
