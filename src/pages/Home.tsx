@@ -28,7 +28,30 @@ export default function Home() {
         .eq('is_active', true)
         .order('sales_count', { ascending: false })
         .limit(4);
-      if (products) setTrendingProducts(products);
+      
+      if (products) {
+        // Fetch Ratings for trending products
+        const { data: trendingReviews } = await supabase
+          .from('reviews')
+          .select('product_id, rating')
+          .in('product_id', products.map(p => p.id));
+        
+        const productsWithRatings = products.map(p => {
+          const productReviews = trendingReviews?.filter(r => r.product_id === p.id) || [];
+          const reviewCount = productReviews.length;
+          const avgRating = reviewCount > 0 
+            ? productReviews.reduce((sum, r) => sum + r.rating, 0) / reviewCount 
+            : 0;
+          
+          return {
+            ...p,
+            avg_rating: avgRating,
+            review_count: reviewCount
+          };
+        });
+
+        setTrendingProducts(productsWithRatings);
+      }
 
       // Fetch Global Stats
       const { count: prodCount } = await supabase.from('products').select('*', { count: 'exact', head: true });
@@ -144,7 +167,7 @@ export default function Home() {
                 <span className="md:hidden">{p.sales_count}</span>
                 <span className="mx-1 md:mx-2 opacity-30">•</span>
                 <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                <span>5.0</span>
+                <span>{p.avg_rating > 0 ? p.avg_rating.toFixed(1) : 'New'} ({p.review_count || 0})</span>
               </div>
               <div className="mt-auto flex items-center justify-between">
                 <div>
