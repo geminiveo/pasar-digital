@@ -161,11 +161,34 @@ export default function AdminView() {
   };
 
   const handleUpdateWithdrawal = async (id: string, status: 'approved' | 'rejected') => {
-    const { error } = await supabase.from('withdrawals').update({ status }).eq('id', id);
-    if (error) toast.error('Gagal memproses penarikan');
-    else {
+    try {
+      if (status === 'rejected') {
+        // Fetch original withdrawal to get amount and vendor_id
+        const { data: withdrawal, error: fetchError } = await supabase
+          .from('withdrawals')
+          .select('*')
+          .eq('id', id)
+          .single();
+        
+        if (fetchError) throw fetchError;
+
+        // Restore balance
+        const { error: balanceError } = await supabase.rpc('increment_balance', {
+          user_id: withdrawal.vendor_id,
+          amount: withdrawal.amount
+        });
+
+        if (balanceError) throw balanceError;
+      }
+
+      const { error } = await supabase.from('withdrawals').update({ status }).eq('id', id);
+      if (error) throw error;
+
       toast.success(`Penarikan ${status === 'approved' ? 'disetujui' : 'ditolak'}`);
       fetchAdminData();
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Gagal memproses penarikan: ' + err.message);
     }
   };
 
@@ -596,6 +619,37 @@ export default function AdminView() {
                   className="w-full bg-surface-700 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-brand-primary" 
                 />
               </div>
+
+              <div className="pt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                   <label className="text-[10px] font-black text-zinc-500 uppercase">Min. Withdraw (Rp)</label>
+                   <input 
+                     type="number" 
+                     value={data.settings?.site_config?.min_withdrawal || ''} 
+                     onChange={(e) => setData({ ...data, settings: { ...data.settings, site_config: { ...data.settings.site_config, min_withdrawal: parseInt(e.target.value) }}})}
+                     className="w-full bg-surface-700 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-brand-primary font-mono" 
+                   />
+                </div>
+                <div className="space-y-1">
+                   <label className="text-[10px] font-black text-zinc-500 uppercase">Fee Withdraw Platform (Rp)</label>
+                   <input 
+                     type="number" 
+                     value={data.settings?.site_config?.withdrawal_fee_platform || ''} 
+                     onChange={(e) => setData({ ...data, settings: { ...data.settings, site_config: { ...data.settings.site_config, withdrawal_fee_platform: parseInt(e.target.value) }}})}
+                     className="w-full bg-surface-700 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-brand-primary font-mono" 
+                   />
+                </div>
+                <div className="space-y-1">
+                   <label className="text-[10px] font-black text-zinc-500 uppercase">Service Fee Checkout (Rp)</label>
+                   <input 
+                     type="number" 
+                     value={data.settings?.site_config?.checkout_service_fee || ''} 
+                     onChange={(e) => setData({ ...data, settings: { ...data.settings, site_config: { ...data.settings.site_config, checkout_service_fee: parseInt(e.target.value) }}})}
+                     className="w-full bg-surface-700 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-brand-primary font-mono" 
+                   />
+                </div>
+              </div>
+
               <button 
                 onClick={() => saveSettings('site_config', data.settings.site_config)}
                 className="btn-primary w-full mt-4"
