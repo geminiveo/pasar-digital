@@ -20,6 +20,7 @@ export default function Checkout() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
   const [currentOrderSupabaseId, setCurrentOrderSupabaseId] = useState<string | null>(null);
+  const [currentExternalId, setCurrentExternalId] = useState<string | null>(null);
   const [batchOrderIds, setBatchOrderIds] = useState<string[]>([]);
   const [selectedMethod, setSelectedMethod] = useState('qris');
   const [user, setUser] = useState<any>(null);
@@ -27,72 +28,115 @@ export default function Checkout() {
 
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // Auto-redirect mechanism (Realtime + Polling fallback)
+  // 1. Stable Success Callback
+  const handleSuccessfulPayment = () => {
+    console.log('--- ACTION: PAYMENT SUCCESS HANDLER ---');
+    
+    // Clear all payment-related states immediately to hide the QR/Instructions
+    setPaymentLoading(false);
+    setPaymentData(null);
+    setCurrentOrderSupabaseId(null); // Stop listeners
+    
+    // Switch to success view
+    setIsSuccess(true);
+    
+    if (isBatch) {
+      localStorage.removeItem('cart');
+      window.dispatchEvent(new Event('cart_updated'));
+    }
+    
+    toast.success("Pembayaran Terdeteksi!", {
+      description: "Dana telah dikonfirmasi. Mengalihkan Anda secara otomatis...",
+      duration: 6000,
+      icon: <CheckCircle2 className="w-5 h-5 text-green-500" />
+    });
+    
+    // Force a hard redirect after a sufficient delay for the success screen to show
+    setTimeout(() => {
+      console.log('--- EXECUTING REDIRECT ---');
+      navigate('/dashboard/purchases');
+      // Final fallback: if navigate fails, do a window location change
+      setTimeout(() => {
+        if (window.location.pathname.includes('checkout')) {
+          window.location.href = '/dashboard/purchases';
+        }
+      }, 1000);
+    }, 3000);
+  };
+
+  // 2. Multi-Layer Listener (Polling + Realtime)
   useEffect(() => {
     if (!currentOrderSupabaseId || isSuccess) return;
+    
+    const targetId = currentOrderSupabaseId;
+    const targetExternalId = currentExternalId;
+    console.log(`[SYNC] Listening for Order PK: ${targetId} OR External: ${targetExternalId}`);
 
-    // 1. Realtime Listener
-    const channelName = `order-status-${currentOrderSupabaseId}-${Math.floor(Math.random() * 1000000)}`;
+    // Polling is ultra-reliable as long as internet is up
+    const interval = setInterval(async () => {
+      try {
+        // FORCE SYNC: Call our server to check Pakasir/Midtrans status directly
+        if (targetExternalId) {
+          const syncRes = await axios.get(`/api/payments/sync/${targetExternalId}`);
+          if (syncRes.data.status === 'completed') {
+            console.log('[POLL] Sync detected success');
+            handleSuccessfulPayment();
+            return;
+          }
+        }
+
+        // Secondary check: Supabase
+        let query = supabase
+          .from('orders')
+          .select('status')
+          .eq('status', 'completed');
+        
+        if (targetExternalId) {
+          query = query.or(`id.eq.${targetId},order_id_external.eq.${targetExternalId}`);
+        } else {
+          query = query.eq('id', targetId);
+        }
+
+        const { data } = await query.maybeSingle();
+        
+        if (data) {
+          console.log('[POLL] DB detected success');
+          handleSuccessfulPayment();
+        }
+      } catch (e) {
+        console.error('[POLL CRASH]', e);
+      }
+    }, 3500); // Slightly slower to avoid rate limits
+
+    // Realtime Listener
     const channel = supabase
-      .channel(channelName)
+      .channel(`sync-${targetId}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'orders',
-          filter: `id=eq.${currentOrderSupabaseId}`,
         },
         (payload) => {
-          if (payload.new.status === 'completed') {
+          const isMatch = payload.new.id === targetId || payload.new.order_id_external === targetExternalId;
+          console.log('[REALTIME] Update for matching order:', isMatch, payload.new.status);
+          
+          if (isMatch && payload.new.status?.toLowerCase() === 'completed') {
             handleSuccessfulPayment();
           }
         }
       )
-      .subscribe();
-
-    // 2. Polling Fallback (Every 3 seconds)
-    const interval = setInterval(async () => {
-      const { data } = await supabase
-        .from('orders')
-        .select('status')
-        .eq('id', currentOrderSupabaseId)
-        .single();
-      
-      if (data?.status === 'completed') {
-        handleSuccessfulPayment();
-      }
-    }, 3000);
-
-    const handleSuccessfulPayment = () => {
-      // Clear interval and subscription immediately
-      clearInterval(interval);
-      supabase.removeChannel(channel);
-      
-      setPaymentLoading(false);
-      setIsSuccess(true);
-      
-      if (isBatch) {
-        localStorage.removeItem('cart');
-        window.dispatchEvent(new Event('cart_updated'));
-      }
-      
-      toast.success("Pembayaran Terdeteksi!", {
-        description: "Dana telah dikonfirmasi. Mengalihkan Anda...",
-        duration: 4000
+      .subscribe((status) => {
+        console.log(`[REALTIME] Subscription status: ${status}`);
       });
-      
-      // Delay redirect to allow user to see the success state
-      setTimeout(() => {
-        navigate('/dashboard/purchases');
-      }, 3000);
-    };
 
     return () => {
+      console.log('[SYNC] Cleaning up listeners');
       clearInterval(interval);
       supabase.removeChannel(channel);
     };
-  }, [currentOrderSupabaseId, navigate, isSuccess]);
+  }, [currentOrderSupabaseId, isSuccess, navigate]);
 
   const [midtransConfig, setMidtransConfig] = useState<any>(null);
   const [pakasirConfig, setPakasirConfig] = useState<any>(null);
@@ -176,6 +220,7 @@ export default function Checkout() {
     setPaymentLoading(true);
     try {
       const externalOrderId = `INV-${Date.now()}`;
+      setCurrentExternalId(externalOrderId);
       
       // 1. Create order(s) in Supabase
       if (isBatch) {
@@ -329,19 +374,19 @@ export default function Checkout() {
         <motion.div 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="max-w-md mx-auto glass-card flex flex-col items-center text-center p-12 border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.1)]"
+          className="max-w-md mx-auto glass-card flex flex-col items-center text-center p-12 border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.1)] mb-20"
         >
-          <div className="w-20 h-20 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-6 animate-bounce">
-            <CheckCircle2 className="w-10 h-10" />
+          <div className="w-24 h-24 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-8 animate-bounce">
+            <CheckCircle2 className="w-12 h-12" />
           </div>
-          <h2 className="text-3xl font-black text-white mb-4 italic">Pembayaran <span className="text-green-500">Terdeteksi!</span></h2>
-          <p className="text-zinc-400 leading-relaxed mb-8">
-            Dana telah dikonfirmasi oleh sistem. Anda akan dialihkan ke dashboard pesanan dalam beberapa detik...
+          <h2 className="text-4xl font-black text-white mb-4 italic tracking-tight">PEMBAYARAN <span className="text-green-500">SUKSES!</span></h2>
+          <p className="text-zinc-400 leading-relaxed mb-10 text-lg">
+            Dana Anda telah kami terima dan dikonfirmasi secara otomatis. Anda akan dialihkan ke halaman Pembelian dalam beberapa detik...
           </p>
-          <div className="flex gap-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
+          <div className="flex gap-4">
+            <div className="w-3 h-3 bg-green-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+            <div className="w-3 h-3 bg-green-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+            <div className="w-3 h-3 bg-green-500 rounded-full animate-bounce"></div>
           </div>
         </motion.div>
       ) : !paymentData ? (
@@ -481,6 +526,41 @@ export default function Checkout() {
             <p className="text-zinc-600 text-[10px] leading-relaxed italic text-center">
               Setelah pembayaran berhasil, halaman ini akan otomatis dialihkan ke dashboard untuk mendapatkan file produk.
             </p>
+            <button 
+              onClick={async () => {
+                if (!currentExternalId) {
+                  toast.error("Order ID tidak ditemukan.");
+                  return;
+                }
+                
+                const checkToast = toast.loading("Memeriksa status ke server pembayaran...");
+                
+                try {
+                  const { data: syncData } = await axios.get(`/api/payments/sync/${currentExternalId}`);
+                  
+                  toast.dismiss(checkToast);
+                  
+                  if (syncData.status === 'completed') {
+                    handleSuccessfulPayment();
+                  } else {
+                    const statusMsg = syncData.status === 'pending' || syncData.status === 'unpaid' 
+                      ? "Pembayaran belum terdeteksi di sistem Pakasir."
+                      : `Status: ${syncData.status?.toUpperCase() || 'BELUM DIBAYAR'}`;
+                      
+                    toast.info(statusMsg, {
+                      description: "Pastikan Anda sudah menyelesaikan transfer dan tunggu 1-2 menit."
+                    });
+                  }
+                } catch (err) {
+                  toast.dismiss(checkToast);
+                  console.error(err);
+                  toast.error("Gagal menghubungi server pembayaran.");
+                }
+              }}
+              className="text-[10px] text-brand-primary font-bold uppercase tracking-widest hover:underline block mx-auto mt-2"
+            >
+              Sudah Bayar? Cek Status Manual
+            </button>
           </div>
         </motion.div>
       )}
