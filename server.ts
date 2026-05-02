@@ -40,54 +40,43 @@ async function completeOrder(orderIdExternal: string, supabaseAdmin: any) {
     const commission = platformFeePercent / 100;
 
     // 2. Update Order Status (try internal ID first, then external ID)
-    let { data: order, error: orderError } = await supabaseAdmin
+    let { data: orders, error: orderError } = await supabaseAdmin
       .from('orders')
       .update({ status: 'completed' })
-      .eq('id', orderIdExternal)
+      .or(`id.eq.${orderIdExternal},order_id_external.eq.${orderIdExternal}`)
       .eq('status', 'pending')
-      .select('*, buyer_id, amount, product_id')
-      .maybeSingle();
+      .select('*, buyer_id, amount, product_id');
 
-    if (!order) {
-      const { data: orderExt, error: orderExtError } = await supabaseAdmin
-        .from('orders')
-        .update({ status: 'completed' })
-        .eq('order_id_external', orderIdExternal)
-        .eq('status', 'pending')
-        .select('*, buyer_id, amount, product_id')
-        .maybeSingle();
-      
-      order = orderExt;
-      orderError = orderExtError;
-    }
-
-    if (orderError || !order) {
+    if (orderError || !orders || orders.length === 0) {
       console.log(`Order ${orderIdExternal} already processed or not found.`);
       return null;
     }
 
-    // 3. Add Balance to Vendor
-    const vendorEarnings = order.amount * (1 - commission);
+    // 3. Process each order in the batch
+    for (const order of orders) {
+      // Add Balance to Vendor
+      const vendorEarnings = order.amount * (1 - commission);
 
-    const { data: product } = await supabaseAdmin
-      .from('products')
-      .select('vendor_id')
-      .eq('id', order.product_id)
-      .single();
+      const { data: product } = await supabaseAdmin
+        .from('products')
+        .select('vendor_id')
+        .eq('id', order.product_id)
+        .single();
 
-    if (product) {
-      await supabaseAdmin.rpc('increment_balance', { 
-        user_id: product.vendor_id, 
-        amount: vendorEarnings 
+      if (product) {
+        await supabaseAdmin.rpc('increment_balance', { 
+          user_id: product.vendor_id, 
+          amount: vendorEarnings 
+        });
+      }
+
+      // Increment Sales Count
+      await supabaseAdmin.rpc('increment_sales', { 
+        prod_id: order.product_id 
       });
     }
 
-    // 4. Increment Sales Count
-    await supabaseAdmin.rpc('increment_sales', { 
-      prod_id: order.product_id 
-    });
-
-    return order;
+    return orders[0]; // Return the first one for webhook confirmation
   } catch (err) {
     console.error("Order completion failed internally:", err);
     return null;
