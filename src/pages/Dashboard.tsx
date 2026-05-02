@@ -17,6 +17,7 @@ import WalletView from './dashboard/Wallet';
 import Support from './dashboard/Support';
 import AdminView from './dashboard/Admin';
 import BecomeVendor from './dashboard/BecomeVendor';
+import SettingsView from './dashboard/Settings';
 
 export default function Dashboard() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -318,9 +319,8 @@ export default function Dashboard() {
             <Route path="/support" element={<Support profile={profile!} />} />
             <Route path="/admin" element={<AdminView />} />
             <Route path="/become-vendor" element={<BecomeVendor profile={profile!} onUpdate={getProfile} />} />
+            <Route path="/settings" element={<SettingsView profile={profile!} onUpdate={getProfile} />} />
           </Routes>
         </div>
       </main>
     </div>
-  );
-}
