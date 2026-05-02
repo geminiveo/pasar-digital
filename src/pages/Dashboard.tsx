@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, ShoppingBag, Package, Users, BarChart3, 
-  Settings, Bell, LogOut, Plus, ChevronRight, Wallet, HelpCircle, Star, Shield,
+  Settings as SettingsIcon, Bell, LogOut, Plus, ChevronRight, Wallet, HelpCircle, Star, Shield,
   Menu, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -17,7 +17,7 @@ import WalletView from './dashboard/Wallet';
 import Support from './dashboard/Support';
 import AdminView from './dashboard/Admin';
 import BecomeVendor from './dashboard/BecomeVendor';
-import SettingsView from './dashboard/Settings';
+import AccountSettings from './dashboard/Settings';
 
 export default function Dashboard() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -152,7 +152,7 @@ export default function Dashboard() {
     { label: 'Tiket Support', icon: <HelpCircle />, path: '/dashboard/support', roles: ['buyer', 'vendor', 'admin'] },
     { label: 'Admin Panel', icon: <Shield />, path: '/dashboard/admin', roles: ['admin'] },
     { label: 'Menjadi Vendor', icon: <Plus />, path: '/dashboard/become-vendor', roles: ['buyer'] },
-    { label: 'Pengaturan', icon: <Settings />, path: '/dashboard/settings', roles: ['buyer', 'vendor', 'admin'] },
+    { label: 'Pengaturan', icon: <SettingsIcon />, path: '/dashboard/settings', roles: ['buyer', 'vendor', 'admin'] },
   ];
 
   const sidebarItems = navItems.filter(item => item.roles.includes(profile?.role || 'buyer'));
@@ -319,8 +319,10 @@ export default function Dashboard() {
             <Route path="/support" element={<Support profile={profile!} />} />
             <Route path="/admin" element={<AdminView />} />
             <Route path="/become-vendor" element={<BecomeVendor profile={profile!} onUpdate={getProfile} />} />
-            <Route path="/settings" element={<SettingsView profile={profile!} onUpdate={getProfile} />} />
+            <Route path="/settings" element={<AccountSettings profile={profile!} onUpdate={getProfile} />} />
           </Routes>
         </div>
       </main>
     </div>
+  );
+}
