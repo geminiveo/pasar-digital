@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { User, Store, CreditCard, MapPin, Phone, Save, Loader2, Camera } from 'lucide-react';
+import { User, Store, CreditCard, Save, Loader2, Camera, Info } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Profile } from '../../types';
 import { toast } from 'sonner';
 
-export default function Settings({ profile, onUpdate }: { profile: Profile; onUpdate: () => void }) {
+export default function AccountSettings({ profile, onUpdate }: { profile: Profile; onUpdate: () => void }) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     full_name: profile.full_name || '',
@@ -97,7 +97,7 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Avatar Section */}
-        <div className="glass-card p-6 border-brand-primary/20">
+        <div id="avatar-section" className="glass-card p-6 border-brand-primary/20">
           <div className="flex flex-col md:flex-row items-center gap-6">
             <div className="relative group">
               <div className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-brand-primary/30 p-1 bg-surface-800 shadow-xl group-hover:border-brand-primary transition-all">
@@ -107,9 +107,9 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
                   className="w-full h-full rounded-xl object-cover"
                 />
               </div>
-              <label className="absolute -bottom-2 -right-2 w-8 h-8 bg-brand-primary text-white rounded-lg flex items-center justify-center cursor-pointer shadow-lg hover:bg-brand-secondary transition-all">
+              <label htmlFor="avatar-upload" className="absolute -bottom-2 -right-2 w-8 h-8 bg-brand-primary text-white rounded-lg flex items-center justify-center cursor-pointer shadow-lg hover:bg-brand-secondary transition-all">
                 <Camera className="w-4 h-4" />
-                <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={loading} />
+                <input id="avatar-upload" type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={loading} />
               </label>
             </div>
             <div className="text-center md:text-left">
@@ -121,7 +121,7 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Identity Section */}
-          <div className="glass-card p-8 border-brand-primary/10">
+          <div id="identity-section" className="glass-card p-8 border-brand-primary/10">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2 bg-brand-primary/10 rounded-lg text-brand-primary">
                 <User className="w-5 h-5" />
@@ -131,8 +131,9 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
             
             <div className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Nama Profil (Display)</label>
+                <label htmlFor="display-name" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Nama Profil (Display)</label>
                 <input 
+                  id="display-name"
                   type="text" 
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
@@ -141,8 +142,9 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Nama Asli Pemilik (Sesuai KTP)</label>
+                <label htmlFor="real-name" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Nama Asli Pemilik (Sesuai KTP)</label>
                 <input 
+                  id="real-name"
                   type="text" 
                   value={formData.real_name}
                   onChange={(e) => setFormData({ ...formData, real_name: e.target.value })}
@@ -150,8 +152,9 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">NIK / No. KTP</label>
+                <label htmlFor="ktp-number" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">NIK / No. KTP</label>
                 <input 
+                  id="ktp-number"
                   type="text" 
                   value={formData.ktp_number}
                   onChange={(e) => setFormData({ ...formData, ktp_number: e.target.value })}
@@ -160,8 +163,9 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Bio Singkat</label>
+                <label htmlFor="user-bio" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Bio Singkat</label>
                 <textarea 
+                  id="user-bio"
                   value={formData.bio}
                   onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
                   className="w-full bg-surface-700 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-brand-primary outline-none transition-all h-24 resize-none"
@@ -172,7 +176,7 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
           </div>
 
           {/* Store Section */}
-          <div className="glass-card p-8 border-brand-primary/10">
+          <div id="store-section" className="glass-card p-8 border-brand-primary/10">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2 bg-brand-primary/10 rounded-lg text-brand-primary">
                 <Store className="w-5 h-5" />
@@ -182,8 +186,9 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
             
             <div className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Nama Vendor / Toko</label>
+                <label htmlFor="vendor-name" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Nama Vendor / Toko</label>
                 <input 
+                  id="vendor-name"
                   type="text" 
                   value={formData.store_name}
                   onChange={(e) => setFormData({ ...formData, store_name: e.target.value })}
@@ -193,10 +198,11 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">WhatsApp</label>
+                <label htmlFor="whatsapp-number" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">WhatsApp</label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-sm">+62</span>
                   <input 
+                    id="whatsapp-number"
                     type="text" 
                     value={formData.whatsapp.replace('+62', '')}
                     onChange={(e) => setFormData({ ...formData, whatsapp: `+62${e.target.value.replace(/[^0-9]/g, '')}` })}
@@ -206,8 +212,9 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
                 </div>
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Alamat Lengkap</label>
+                <label htmlFor="store-address" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Alamat Lengkap</label>
                 <input 
+                  id="store-address"
                   type="text" 
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
@@ -219,7 +226,7 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
           </div>
 
           {/* Payment Section */}
-          <div className="glass-card p-8 border-brand-primary/10 lg:col-span-2">
+          <div id="payment-section" className="glass-card p-8 border-brand-primary/10 lg:col-span-2">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2 bg-brand-primary/10 rounded-lg text-brand-primary">
                 <CreditCard className="w-5 h-5" />
@@ -229,8 +236,9 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Nama Bank / E-Wallet</label>
+                <label htmlFor="bank-name" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Nama Bank / E-Wallet</label>
                 <input 
+                  id="bank-name"
                   type="text" 
                   value={formData.bank_name}
                   onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
@@ -240,8 +248,9 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Nomor Rekening / HP</label>
+                <label htmlFor="bank-account" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Nomor Rekening / HP</label>
                 <input 
+                  id="bank-account"
                   type="text" 
                   value={formData.bank_account}
                   onChange={(e) => setFormData({ ...formData, bank_account: e.target.value })}
@@ -251,8 +260,9 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Nama Pemilik Rekening</label>
+                <label htmlFor="bank-holder" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Nama Pemilik Rekening</label>
                 <input 
+                  id="bank-holder"
                   type="text" 
                   value={formData.bank_holder}
                   onChange={(e) => setFormData({ ...formData, bank_holder: e.target.value })}
@@ -273,23 +283,16 @@ export default function Settings({ profile, onUpdate }: { profile: Profile; onUp
 
         <div className="flex justify-end">
           <button 
+            id="save-settings-btn"
             type="submit" 
             disabled={loading}
             className="btn-primary px-12 py-4 text-sm font-black uppercase tracking-[0.2em] flex items-center gap-2"
           >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+            {loading ? <Loader2 className="id-btn-loader w-5 h-5 animate-spin" /> : <Save className="id-btn-icon w-5 h-5" />}
             Simpan Perubahan
           </button>
         </div>
       </form>
     </div>
-  );
-}
-
-function Info({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
-    </svg>
   );
 }
