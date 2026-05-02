@@ -16,6 +16,7 @@ import Shop from './pages/Shop';
 import Vendors from './pages/Vendors';
 import Checkout from './pages/Checkout';
 import Success from './pages/Success';
+import Cart from './pages/Cart';
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/dashboard/*" element={<Dashboard />} />
             <Route path="/checkout/:productId" element={<Checkout />} />
+            <Route path="/cart" element={<Cart />} />
             <Route path="/success" element={<Success />} />
           </Routes>
         </main>
